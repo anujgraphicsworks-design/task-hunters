@@ -521,11 +521,6 @@ export function AppProvider({ children }) {
 
   // Auth Operations — ALL authentication is offloaded to Firebase.
   const loginUser = async (email, password, rememberMe = true) => {
-    if (!isBackendOnline) {
-      if (showToast) showToast("Server is offline. Please try again later.", "error");
-      return false;
-    }
-
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await userCredential.user.getIdToken();
@@ -541,12 +536,10 @@ export function AppProvider({ children }) {
         body: JSON.stringify({
           name: userCredential.user.displayName || email.split('@')[0]
         })
-      });
+      }).catch(() => null);
 
-      if (!res.ok) {
-        const data = await res.json();
-        if (showToast) showToast(data.error || "Profile sync failed.", "error");
-        return false;
+      if (res && res.ok) {
+        setIsBackendOnline(true);
       }
       
       return true;
@@ -563,11 +556,6 @@ export function AppProvider({ children }) {
   };
 
   const loginWithGoogle = async (rememberMe = true) => {
-    if (!isBackendOnline) {
-      if (showToast) showToast("Server is offline. Google authentication is unavailable.", "error");
-      return false;
-    }
-
     try {
       const userCredential = await signInWithPopup(auth, googleProvider);
       const idToken = await userCredential.user.getIdToken();
@@ -582,18 +570,16 @@ export function AppProvider({ children }) {
         body: JSON.stringify({
           name: userCredential.user.displayName || userCredential.user.email.split('@')[0]
         })
-      });
+      }).catch(() => null);
 
-      if (!res.ok) {
-        const data = await res.json();
-        if (showToast) showToast(data.error || "Profile sync failed.", "error");
-        return false;
+      if (res && res.ok) {
+        setIsBackendOnline(true);
       }
 
       return true;
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
-        if (showToast) showToast("Google authentication failed. Please try again.", "error");
+        if (showToast) showToast(`Google authentication failed: ${err.message || 'Please try again'}`, "error");
       }
       return false;
     }

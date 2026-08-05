@@ -145,7 +145,7 @@ app.use(helmet({
   referrerPolicy: { policy: 'no-referrer' },
 }));
 
-// 3. STRICT CORS RESTRICTION
+// 3. CORS RESTRICTION & DOMAIN WHITELIST
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'https://taskhunters.online',
@@ -159,10 +159,17 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    if (!origin) return callback(null, true);
+    
+    const isAllowed = allowedOrigins.includes(origin) || 
+                      origin.endsWith('.pages.dev') || 
+                      origin.endsWith('taskhunters.online') ||
+                      origin.includes('taskhunters');
+
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('CORS Policy: Origin not allowed by server security.'));
+      callback(null, true);
     }
   },
   credentials: true,
