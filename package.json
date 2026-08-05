@@ -4,9 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "start": "node server/server.js",
     "dev": "vite",
     "server": "node server/server.js",
-    "db:push": "prisma db push --schema=server/prisma/schema.prisma",
+    "postinstall": "prisma generate --schema=server/prisma/schema.prisma && prisma db push --schema=server/prisma/schema.prisma",
     "build": "vite build",
     "preview": "vite preview"
   },
