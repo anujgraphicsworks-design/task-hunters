@@ -286,26 +286,44 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, [activeClaim, showToast]);
 
-  // Submit & Store Reddit Username
+  // Submit & Store Reddit Username (Supports connecting any amount of Reddit IDs)
   const submitRedditUsername = (username) => {
     if (!username) return;
     const cleanUsername = username.trim().startsWith('u/') ? username.trim() : `u/${username.trim()}`;
 
-    setAuthState(prev => ({
-      ...prev,
-      user: {
-        ...prev.user,
-        redditUsername: cleanUsername,
-        isRedditApproved: false,
-      }
-    }));
+    setAuthState(prev => {
+      const currentAccounts = prev.user.redditAccounts || [];
+      const exists = currentAccounts.some(acc => acc.username.toLowerCase() === cleanUsername.toLowerCase());
+      
+      const newAccounts = exists 
+        ? currentAccounts 
+        : [...currentAccounts, { username: cleanUsername, isApproved: false }];
+
+      return {
+        ...prev,
+        user: {
+          ...prev.user,
+          redditUsername: cleanUsername, // for backwards compatibility
+          redditAccounts: newAccounts,
+          isRedditApproved: exists ? prev.user.isRedditApproved : false, // needs approval if new
+        }
+      };
+    });
 
     setMicrotaskers(prev => prev.map(m => {
       if (m.email.toLowerCase() === authState.user.email.toLowerCase() || m.id === authState.user.id) {
+        const currentAccounts = m.redditAccounts || [];
+        const exists = currentAccounts.some(acc => acc.username.toLowerCase() === cleanUsername.toLowerCase());
+        const newAccounts = exists 
+          ? currentAccounts 
+          : [...currentAccounts, { username: cleanUsername, isApproved: false }];
+          
         return {
           ...m,
           redditUsername: cleanUsername,
-          isRedditApproved: false,
+          redditAccounts: newAccounts,
+          isRedditApproved: exists ? m.isRedditApproved : false,
+          status: exists ? m.status : 'PENDING_APPROVAL'
         };
       }
       return m;
@@ -316,12 +334,55 @@ export function AppProvider({ children }) {
     }
   };
 
+  const deleteRedditUsername = (username) => {
+    if (!username) return;
+    const cleanUsername = username.trim().startsWith('u/') ? username.trim() : `u/${username.trim()}`;
+
+    setAuthState(prev => {
+      const currentAccounts = prev.user.redditAccounts || [];
+      const newAccounts = currentAccounts.filter(acc => acc.username.toLowerCase() !== cleanUsername.toLowerCase());
+      const nextActive = newAccounts.length > 0 ? newAccounts[newAccounts.length - 1].username : '';
+      
+      return {
+        ...prev,
+        user: {
+          ...prev.user,
+          redditUsername: nextActive,
+          redditAccounts: newAccounts,
+          isRedditApproved: newAccounts.some(acc => acc.isApproved),
+        }
+      };
+    });
+
+    setMicrotaskers(prev => prev.map(m => {
+      if (m.email.toLowerCase() === authState.user.email.toLowerCase() || m.id === authState.user.id) {
+        const currentAccounts = m.redditAccounts || [];
+        const newAccounts = currentAccounts.filter(acc => acc.username.toLowerCase() !== cleanUsername.toLowerCase());
+        const nextActive = newAccounts.length > 0 ? newAccounts[newAccounts.length - 1].username : '';
+        return {
+          ...m,
+          redditUsername: nextActive,
+          redditAccounts: newAccounts,
+          isRedditApproved: newAccounts.some(acc => acc.isApproved),
+          status: newAccounts.some(acc => acc.isApproved) ? 'APPROVED' : 'PENDING_APPROVAL'
+        };
+      }
+      return m;
+    }));
+
+    if (showToast) {
+      showToast(`Reddit ID ${cleanUsername} removed.`, "info");
+    }
+  };
+
   // Admin / Mod Approval of Reddit ID & Microtaskers
   const approveMicrotasker = (userId) => {
     setMicrotaskers(prev => prev.map(m => {
       if (m.id === userId) {
+        const approvedAccounts = (m.redditAccounts || []).map(acc => ({ ...acc, isApproved: true }));
         return {
           ...m,
+          redditAccounts: approvedAccounts,
           isApprovedHunter: true,
           isRedditApproved: true,
           status: 'APPROVED'
@@ -331,22 +392,31 @@ export function AppProvider({ children }) {
     }));
 
     if (authState.user && authState.user.id === userId) {
-      setAuthState(prev => ({
-        ...prev,
-        user: { ...prev.user, isRedditApproved: true }
-      }));
+      setAuthState(prev => {
+        const approvedAccounts = (prev.user.redditAccounts || []).map(acc => ({ ...acc, isApproved: true }));
+        return {
+          ...prev,
+          user: { 
+            ...prev.user, 
+            redditAccounts: approvedAccounts,
+            isRedditApproved: true 
+          }
+        };
+      });
     }
 
     if (showToast) {
-      showToast("User Reddit ID approved! Task claiming unlocked.", "success");
+      showToast("User Reddit IDs approved! Task claiming unlocked.", "success");
     }
   };
 
   const revokeMicrotasker = (userId) => {
     setMicrotaskers(prev => prev.map(m => {
       if (m.id === userId) {
+        const revokedAccounts = (m.redditAccounts || []).map(acc => ({ ...acc, isApproved: false }));
         return {
           ...m,
+          redditAccounts: revokedAccounts,
           isApprovedHunter: false,
           isRedditApproved: false,
           status: 'PENDING_APPROVAL'
@@ -354,6 +424,20 @@ export function AppProvider({ children }) {
       }
       return m;
     }));
+
+    if (authState.user && authState.user.id === userId) {
+      setAuthState(prev => {
+        const revokedAccounts = (prev.user.redditAccounts || []).map(acc => ({ ...acc, isApproved: false }));
+        return {
+          ...prev,
+          user: {
+            ...prev.user,
+            redditAccounts: revokedAccounts,
+            isRedditApproved: false
+          }
+        };
+      });
+    }
 
     if (showToast) {
       showToast("User Reddit ID approval revoked.", "warning");
@@ -932,6 +1016,7 @@ export function AppProvider({ children }) {
         approveMicrotasker,
         revokeMicrotasker,
         submitRedditUsername,
+        deleteRedditUsername,
         tasks,
         taskHistory,
         activeClaim,

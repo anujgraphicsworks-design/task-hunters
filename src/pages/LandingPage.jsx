@@ -33,7 +33,7 @@ export default function LandingPage({ onExploreTasks, onOpenAuth }) {
     },
     {
       q: "Is there a minimum withdrawal amount?",
-      a: "The minimum withdrawal limit is $5.00 (or equivalent in ₹ INR / Crypto). Payouts are processed within 24 hours."
+      a: "The minimum withdrawal limit is $1.00 (or equivalent in ₹ INR / Crypto). Payouts are processed within 24 hours."
     },
     {
       q: "Do I need experience or credit card to join?",
@@ -209,7 +209,7 @@ export default function LandingPage({ onExploreTasks, onOpenAuth }) {
             </p>
             <ul className={`space-y-1.5 text-xs font-medium pt-2 border-t ${isDark ? 'border-slate-800 text-slate-300' : 'border-slate-100 text-slate-600'}`}>
               <li className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Fast verification</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> $5 minimum withdrawal</li>
+              <li className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> $1 minimum withdrawal</li>
               <li className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Multiple withdrawal channels</li>
             </ul>
           </div>

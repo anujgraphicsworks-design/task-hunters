@@ -21,7 +21,7 @@ export default function WalletPage() {
     user, 
     formatAmount, 
     payouts, 
-    requestWithdrawal, 
+    requestPayout, 
     updatePaymentInfo,
     deleteAccount
   } = useApp();
@@ -35,7 +35,7 @@ export default function WalletPage() {
   // Withdrawal form
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMethod, setWithdrawMethod] = useState('UPI');
-  const [withdrawDestination, setWithdrawDestination] = useState(user.upiId || '');
+  const [withdrawDestination, setWithdrawDestination] = useState('');
 
   const userPayouts = payouts.filter(p => p.userId === user.id);
 
@@ -56,12 +56,16 @@ export default function WalletPage() {
       alert("Please enter a valid withdrawal amount.");
       return;
     }
+    if (amt < 1.00) {
+      alert("Minimum withdrawal amount is $1.00.");
+      return;
+    }
     if (!withdrawDestination.trim()) {
       alert("Please enter your target UPI ID or Crypto Wallet Address.");
       return;
     }
 
-    const success = requestWithdrawal(amt, withdrawMethod, withdrawDestination.trim());
+    const success = requestPayout(amt, withdrawMethod, withdrawDestination.trim());
     if (success) {
       alert(`Withdrawal request for ${formatAmount(amt)} submitted! Status: PENDING.`);
       setWithdrawAmount('');
@@ -87,7 +91,7 @@ export default function WalletPage() {
           <div className="pt-6 flex flex-wrap items-center gap-4 text-xs font-semibold">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-bg/80 border border-dark-border text-emerald-400">
               <CheckCircle2 className="w-4 h-4" />
-              Min Withdrawal: $5.00 / ₹425
+              Min Withdrawal: $1.00 / ₹85
             </div>
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-bg/80 border border-dark-border text-cyan-400">
               <ShieldCheck className="w-4 h-4" />
