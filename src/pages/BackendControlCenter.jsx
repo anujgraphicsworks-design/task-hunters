@@ -80,6 +80,7 @@ export default function BackendControlCenter() {
     sheetLogs,
     microtaskers,
     fetchAllUsersFromBackend,
+    deleteUserFromBackend,
     approveMicrotasker,
     revokeMicrotasker,
     theme
@@ -176,6 +177,8 @@ export default function BackendControlCenter() {
   const [sheetsForm, setSheetsForm] = useState({ ...sheetsConfig });
 
   // Filtered microtaskers list
+  const [userManagementView, setUserManagementView] = useState('ALL_USERS'); // 'ALL_USERS' | 'REDDIT_APPROVALS'
+
   const filteredMicrotaskers = microtaskers.filter(m => {
     const matchesSearch = m.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
                           m.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
@@ -187,8 +190,15 @@ export default function BackendControlCenter() {
     return matchesSearch && matchesStatus;
   });
 
+  // Users who submitted a Reddit ID (for the Reddit Approval section)
+  const redditSubmittedUsers = microtaskers.filter(m => m.redditUsername && m.redditUsername.trim() !== '');
+  const pendingRedditApprovals = redditSubmittedUsers.filter(m => !(m.isApprovedHunter || m.isRedditApproved));
+  const approvedRedditUsers = redditSubmittedUsers.filter(m => m.isApprovedHunter || m.isRedditApproved);
+
   const approvedHuntersCount = microtaskers.filter(m => m.isApprovedHunter || m.isRedditApproved).length;
   const pendingHuntersCount = microtaskers.filter(m => !(m.isApprovedHunter || m.isRedditApproved)).length;
+  const googleUsersCount = microtaskers.filter(m => m.authProvider === 'GOOGLE').length;
+  const emailUsersCount = microtaskers.filter(m => m.authProvider !== 'GOOGLE').length;
 
   // Update telemetry metrics periodically
   useEffect(() => {
@@ -982,166 +992,373 @@ export default function BackendControlCenter() {
         </div>
       )}
 
-      {/* SUBTAB: MICROTASKERS & REDDIT ID APPROVAL HUB */}
+      {/* SUBTAB: MICROTASKERS & USER MANAGEMENT HUB */}
       {activeBackendSubtab === 'MICROTASKERS' && (
-        <div className="p-8 rounded-3xl bg-dark-card border border-dark-border space-y-6">
-          
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-                <Award className="w-5 h-5 text-emerald-400" />
-                Reddit ID & Microtasker Approval Management
-              </h3>
-              <p className="text-xs text-dark-muted">
-                Review submitted Reddit Usernames, approve microtaskers, and grant task-claiming privileges.
-              </p>
-            </div>
+        <div className="space-y-6">
 
-            <div className="flex items-center gap-3">
-              <span className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-extrabold flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                {approvedHuntersCount} Approved Microtaskers
-              </span>
-
-              <span className="px-3.5 py-1.5 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-extrabold flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-amber-400" />
-                {pendingHuntersCount} Pending Review
-              </span>
-            </div>
+          {/* SECTION TOGGLE TABS */}
+          <div className="flex items-center gap-3 p-2 rounded-2xl bg-dark-card border border-dark-border">
+            <button
+              onClick={() => setUserManagementView('ALL_USERS')}
+              className={`flex-1 py-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 ${
+                userManagementView === 'ALL_USERS'
+                  ? 'bg-brand-500 text-white shadow-glow-orange'
+                  : 'text-dark-muted hover:text-white hover:bg-dark-bg'
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              All Registered Users ({microtaskers.length})
+            </button>
+            <button
+              onClick={() => setUserManagementView('REDDIT_APPROVALS')}
+              className={`flex-1 py-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 ${
+                userManagementView === 'REDDIT_APPROVALS'
+                  ? 'bg-emerald-500 text-white shadow-glow-green'
+                  : 'text-dark-muted hover:text-white hover:bg-dark-bg'
+              }`}
+            >
+              <Award className="w-4 h-4" />
+              Reddit ID Approvals ({redditSubmittedUsers.length})
+              {pendingRedditApprovals.length > 0 && (
+                <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold animate-pulse">
+                  {pendingRedditApprovals.length} NEW
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Filter & Search Bar */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-dark-bg p-3.5 rounded-2xl border border-dark-border">
-            
-            <div className="flex items-center gap-2 text-xs font-bold">
-              <span className="text-dark-muted">Status Filter:</span>
-              <button
-                onClick={() => setUserStatusFilter('ALL')}
-                className={`px-3 py-1.5 rounded-xl transition-all ${userStatusFilter === 'ALL' ? 'bg-brand-500 text-white font-extrabold' : 'text-dark-muted hover:text-white'}`}
-              >
-                All Users ({microtaskers.length})
-              </button>
-              <button
-                onClick={() => setUserStatusFilter('APPROVED')}
-                className={`px-3 py-1.5 rounded-xl transition-all ${userStatusFilter === 'APPROVED' ? 'bg-emerald-500 text-white font-extrabold' : 'text-dark-muted hover:text-white'}`}
-              >
-                Approved ({approvedHuntersCount})
-              </button>
-              <button
-                onClick={() => setUserStatusFilter('PENDING')}
-                className={`px-3 py-1.5 rounded-xl transition-all ${userStatusFilter === 'PENDING' ? 'bg-amber-500 text-white font-extrabold' : 'text-dark-muted hover:text-white'}`}
-              >
-                Pending Reddit Approval ({pendingHuntersCount})
-              </button>
-            </div>
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* SECTION 1: ALL REGISTERED USERS (Master Database) */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {userManagementView === 'ALL_USERS' && (
+            <div className="p-8 rounded-3xl bg-dark-card border border-dark-border space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-brand-400" />
+                    All Registered Users — Master Database
+                  </h3>
+                  <p className="text-xs text-dark-muted">
+                    Every user who signed up on your site — via Google Auth or Email & Password. Edit, view, or delete accounts.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => fetchAllUsersFromBackend && fetchAllUsersFromBackend()}
+                    className="px-3 py-1.5 rounded-xl bg-brand-500/15 text-brand-300 border border-brand-500/30 text-xs font-extrabold hover:bg-brand-500/25 transition-all flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Refresh
+                  </button>
+                </div>
+              </div>
 
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 text-dark-muted absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search name, Reddit ID or email..."
-                value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
-                className="w-full bg-dark-card border border-dark-border rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-dark-muted focus:outline-none focus:border-brand-500"
-              />
-            </div>
+              {/* Stats Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl bg-dark-bg border border-dark-border text-center">
+                  <div className="text-xl font-extrabold text-white">{microtaskers.length}</div>
+                  <div className="text-[10px] text-dark-muted font-bold uppercase">Total Users</div>
+                </div>
+                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-center">
+                  <div className="text-xl font-extrabold text-blue-300">{googleUsersCount}</div>
+                  <div className="text-[10px] text-blue-400 font-bold uppercase">Google Auth</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-500/10 border border-slate-500/30 text-center">
+                  <div className="text-xl font-extrabold text-slate-300">{emailUsersCount}</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Email/Password</div>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center">
+                  <div className="text-xl font-extrabold text-emerald-300">{approvedHuntersCount}</div>
+                  <div className="text-[10px] text-emerald-400 font-bold uppercase">Approved Hunters</div>
+                </div>
+              </div>
 
-          </div>
+              {/* Search */}
+              <div className="relative w-full sm:w-80">
+                <Search className="w-3.5 h-3.5 text-dark-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by name, email, or Reddit ID..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-dark-muted focus:outline-none focus:border-brand-500"
+                />
+              </div>
 
-          {/* Microtaskers Data Table */}
-          <div className="rounded-2xl border border-dark-border bg-dark-bg overflow-hidden shadow-lg">
-            <table className="w-full text-left text-xs border-collapse font-mono">
-              <thead className="bg-dark-card border-b border-dark-border text-dark-muted font-bold uppercase text-[10px] tracking-wider">
-                <tr>
-                  <th className="py-3.5 px-4">User ID</th>
-                  <th className="py-3.5 px-4">Name & Email</th>
-                  <th className="py-3.5 px-4">Submitted Reddit ID</th>
-                  <th className="py-3.5 px-4">Role</th>
-                  <th className="py-3.5 px-4">Tasks Completed</th>
-                  <th className="py-3.5 px-4">Approval Status</th>
-                  <th className="py-3.5 px-4 text-right">Approval Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-border/60">
-                {filteredMicrotaskers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-dark-muted font-mono">
-                      No users match the search filter.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredMicrotaskers.map(m => {
-                    const isFullyApproved = m.isApprovedHunter || m.isRedditApproved || m.role === 'ADMIN' || m.role === 'MODERATOR';
-
-                    return (
-                      <tr key={m.id} className="hover:bg-dark-card/50 transition-colors">
-                        <td className="py-3.5 px-4 text-brand-300 font-bold">{m.id}</td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-extrabold text-white block">{m.name}</span>
-                          <span className="text-[10px] text-dark-muted">{m.email}</span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {m.redditUsername ? (
-                            <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border ${
-                              isFullyApproved ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                            }`}>
-                              {m.redditUsername} {isFullyApproved ? '✓' : '(Pending)'}
-                            </span>
-                          ) : (
-                            <span className="text-dark-muted italic">Not Submitted</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                            m.role === 'ADMIN' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                            m.role === 'MODERATOR' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-                            'bg-dark-card text-dark-muted border border-dark-border'
-                          }`}>
-                            {m.role}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 font-bold text-white">{m.tasksCompleted || 0} Tasks</td>
-                        <td className="py-3.5 px-4">
-                          {isFullyApproved ? (
-                            <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-extrabold flex items-center gap-1 w-fit">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                              Reddit ID Approved
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-extrabold flex items-center gap-1 w-fit">
-                              <Clock className="w-3 h-3 text-amber-400 animate-pulse" />
-                              Pending Approval
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {!isFullyApproved ? (
-                              <button
-                                onClick={() => approveMicrotasker(m.id)}
-                                className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs shadow-glow-green transition-all flex items-center gap-1"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                Approve Reddit ID
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => revokeMicrotasker(m.id)}
-                                className="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-bold hover:bg-rose-500/25 transition-all flex items-center gap-1"
-                              >
-                                <UserX className="w-3.5 h-3.5" />
-                                Revoke Approval
-                              </button>
-                            )}
-                          </div>
+              {/* Users Table */}
+              <div className="rounded-2xl border border-dark-border bg-dark-bg overflow-auto max-h-[500px] shadow-lg">
+                <table className="w-full text-left text-xs border-collapse font-mono">
+                  <thead className="bg-dark-card border-b border-dark-border text-dark-muted font-bold uppercase text-[10px] tracking-wider sticky top-0">
+                    <tr>
+                      <th className="py-3.5 px-4">#</th>
+                      <th className="py-3.5 px-4">Site Name</th>
+                      <th className="py-3.5 px-4">Email</th>
+                      <th className="py-3.5 px-4">Auth Method</th>
+                      <th className="py-3.5 px-4">Reddit ID</th>
+                      <th className="py-3.5 px-4">Role</th>
+                      <th className="py-3.5 px-4">Balance</th>
+                      <th className="py-3.5 px-4">Joined</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-dark-border/60">
+                    {(userSearchQuery
+                      ? microtaskers.filter(m =>
+                          m.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                          m.email?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                          (m.redditUsername && m.redditUsername.toLowerCase().includes(userSearchQuery.toLowerCase()))
+                        )
+                      : microtaskers
+                    ).length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-12 text-dark-muted">
+                          No users found.
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                    ) : (
+                      (userSearchQuery
+                        ? microtaskers.filter(m =>
+                            m.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                            m.email?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                            (m.redditUsername && m.redditUsername.toLowerCase().includes(userSearchQuery.toLowerCase()))
+                          )
+                        : microtaskers
+                      ).map((m, idx) => (
+                        <tr key={m.id} className="hover:bg-dark-card/50 transition-colors">
+                          <td className="py-3.5 px-4 text-dark-muted font-bold">{idx + 1}</td>
+                          <td className="py-3.5 px-4 text-white font-extrabold">
+                            {m.name || m.email.split('@')[0]}
+                          </td>
+                          <td className="py-3.5 px-4 text-cyan-400">{m.email}</td>
+                          <td className="py-3.5 px-4">
+                            {m.authProvider === 'GOOGLE' ? (
+                              <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold text-[10px]">🔵 GOOGLE</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-slate-500/20 text-slate-300 border border-slate-500/40 font-bold text-[10px]">📧 EMAIL</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {m.redditUsername ? (
+                              <span className="font-bold text-amber-300">{m.redditUsername}</span>
+                            ) : (
+                              <span className="text-dark-muted italic text-[10px]">Not submitted</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                              m.role === 'ADMIN' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                              m.role === 'MODERATOR' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                              'bg-dark-card text-dark-muted border border-dark-border'
+                            }`}>
+                              {m.role}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-emerald-400">${(m.balance || 0).toFixed(2)}</td>
+                          <td className="py-3.5 px-4 text-[10px] text-dark-muted">
+                            {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            {m.role !== 'ADMIN' && (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to DELETE user "${m.name || m.email}"? This cannot be undone.`)) {
+                                    deleteUserFromBackend(m.id);
+                                  }
+                                }}
+                                className="px-2.5 py-1 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-[10px] hover:bg-rose-500/30 transition-all flex items-center gap-1 ml-auto"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* SECTION 2: REDDIT ID APPROVAL REQUESTS */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {userManagementView === 'REDDIT_APPROVALS' && (
+            <div className="p-8 rounded-3xl bg-dark-card border border-emerald-500/30 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    <Award className="w-5 h-5 text-emerald-400" />
+                    Reddit ID Approval Requests
+                  </h3>
+                  <p className="text-xs text-dark-muted">
+                    Users who submitted their Reddit username for approval. Approve or reject their Reddit ID to allow them to claim tasks.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-extrabold flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
+                    {pendingRedditApprovals.length} Pending
+                  </span>
+                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-extrabold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    {approvedRedditUsers.length} Approved
+                  </span>
+                </div>
+              </div>
+
+              {/* PENDING APPROVALS TABLE */}
+              {pendingRedditApprovals.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-extrabold text-amber-300 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-400" />
+                    Pending Reddit ID Approvals ({pendingRedditApprovals.length})
+                  </h4>
+                  <div className="rounded-2xl border border-amber-500/30 bg-dark-bg overflow-auto max-h-[400px] shadow-lg">
+                    <table className="w-full text-left text-xs border-collapse font-mono">
+                      <thead className="bg-amber-500/10 border-b border-amber-500/30 text-amber-300 font-bold uppercase text-[10px] tracking-wider sticky top-0">
+                        <tr>
+                          <th className="py-3 px-4">#</th>
+                          <th className="py-3 px-4">Site Username</th>
+                          <th className="py-3 px-4">Email</th>
+                          <th className="py-3 px-4">Submitted Reddit ID</th>
+                          <th className="py-3 px-4">Auth Method</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-dark-border/60">
+                        {pendingRedditApprovals.map((m, idx) => (
+                          <tr key={m.id} className="hover:bg-amber-500/5 transition-colors">
+                            <td className="py-3.5 px-4 text-dark-muted font-bold">{idx + 1}</td>
+                            <td className="py-3.5 px-4 text-white font-extrabold">
+                              {m.name || m.email.split('@')[0]}
+                            </td>
+                            <td className="py-3.5 px-4 text-cyan-400">{m.email}</td>
+                            <td className="py-3.5 px-4">
+                              <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold text-xs">
+                                {m.redditUsername}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {m.authProvider === 'GOOGLE' ? (
+                                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-[10px]">GOOGLE</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-slate-500/20 text-slate-300 font-bold text-[10px]">EMAIL</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => approveMicrotasker(m.id, m.redditUsername)}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs shadow-sm transition-all flex items-center gap-1"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => revokeMicrotasker(m.id)}
+                                  className="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-bold hover:bg-rose-500/25 transition-all flex items-center gap-1"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  Reject
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Delete user "${m.name || m.email}" entirely?`)) {
+                                      deleteUserFromBackend(m.id);
+                                    }
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg bg-dark-bg text-dark-muted border border-dark-border text-xs font-bold hover:text-rose-400 hover:border-rose-500/30 transition-all"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {pendingRedditApprovals.length === 0 && (
+                <div className="text-center py-10 text-dark-muted text-xs font-mono">
+                  ✅ No pending Reddit ID approval requests. All caught up!
+                </div>
+              )}
+
+              {/* APPROVED USERS TABLE */}
+              {approvedRedditUsers.length > 0 && (
+                <div className="space-y-3 pt-4 border-t border-dark-border">
+                  <h4 className="text-sm font-extrabold text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    Approved Reddit Users ({approvedRedditUsers.length})
+                  </h4>
+                  <div className="rounded-2xl border border-emerald-500/30 bg-dark-bg overflow-auto max-h-[400px] shadow-lg">
+                    <table className="w-full text-left text-xs border-collapse font-mono">
+                      <thead className="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-300 font-bold uppercase text-[10px] tracking-wider sticky top-0">
+                        <tr>
+                          <th className="py-3 px-4">#</th>
+                          <th className="py-3 px-4">Site Username</th>
+                          <th className="py-3 px-4">Email</th>
+                          <th className="py-3 px-4">Approved Reddit ID</th>
+                          <th className="py-3 px-4">Auth Method</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-dark-border/60">
+                        {approvedRedditUsers.map((m, idx) => (
+                          <tr key={m.id} className="hover:bg-emerald-500/5 transition-colors">
+                            <td className="py-3.5 px-4 text-dark-muted font-bold">{idx + 1}</td>
+                            <td className="py-3.5 px-4 text-white font-extrabold">
+                              {m.name || m.email.split('@')[0]}
+                            </td>
+                            <td className="py-3.5 px-4 text-cyan-400">{m.email}</td>
+                            <td className="py-3.5 px-4">
+                              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold text-xs">
+                                {m.redditUsername} ✓
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {m.authProvider === 'GOOGLE' ? (
+                                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-[10px]">GOOGLE</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-slate-500/20 text-slate-300 font-bold text-[10px]">EMAIL</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => revokeMicrotasker(m.id)}
+                                  className="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-bold hover:bg-rose-500/25 transition-all flex items-center gap-1"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
+                                  Revoke Approval
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Delete user "${m.name || m.email}" entirely?`)) {
+                                      deleteUserFromBackend(m.id);
+                                    }
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg bg-dark-bg text-dark-muted border border-dark-border text-xs font-bold hover:text-rose-400 hover:border-rose-500/30 transition-all"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
 
         </div>
       )}

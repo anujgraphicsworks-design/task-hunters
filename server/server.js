@@ -965,6 +965,31 @@ app.post('/api/admin/users/reject-reddit', authenticateToken, requireRole('ADMIN
   }
 });
 
+// Admin Endpoint: Delete a user account entirely
+app.delete('/api/admin/users/:id', authenticateToken, requireRole('ADMIN'), authedActionRateLimiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'User ID is required.' });
+
+    // Prevent admin from deleting themselves
+    if (id === req.user.userId) {
+      return res.status(403).json({ error: 'You cannot delete your own admin account.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    // Delete related records first (task claims, payout requests)
+    await prisma.taskClaim.deleteMany({ where: { userId: id } });
+    await prisma.payoutRequest.deleteMany({ where: { userId: id } });
+    await prisma.user.delete({ where: { id } });
+
+    res.json({ success: true, message: `User ${user.email} deleted.` });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Failed to delete user.');
+  }
+});
+
 // User Endpoint: Submit Reddit Username for approval
 app.post('/api/user/submit-reddit', authenticateToken, authedActionRateLimiter, async (req, res) => {
   try {

@@ -559,6 +559,28 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Admin: Delete a user from the backend
+  const deleteUserFromBackend = async (userId) => {
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setMicrotaskers(prev => prev.filter(m => m.id !== userId));
+        if (showToast) showToast("User account deleted.", "success");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (showToast) showToast(data.error || "Failed to delete user.", "error");
+      }
+    } catch (e) {
+      console.warn("Could not delete user:", e);
+      if (showToast) showToast("Failed to delete user.", "error");
+    }
+  };
+
   // Auth Operations — ALL authentication is offloaded to Firebase.
   const loginUser = async (email, password, rememberMe = true) => {
     try {
@@ -1080,6 +1102,7 @@ export function AppProvider({ children }) {
         user: authState.user,
         microtaskers,
         fetchAllUsersFromBackend,
+        deleteUserFromBackend,
         approveMicrotasker,
         revokeMicrotasker,
         submitRedditUsername,
