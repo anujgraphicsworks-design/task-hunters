@@ -1,0 +1,14 @@
+[providers]
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm install --legacy-peer-deps"]
+
+[phases.build]
+cmds = ["npx prisma generate --schema=server/prisma/schema.prisma", "npx prisma db push --schema=server/prisma/schema.prisma"]
+
+[start]
+cmd = "node server/server.js"
