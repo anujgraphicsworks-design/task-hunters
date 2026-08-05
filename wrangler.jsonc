@@ -1,0 +1,10 @@
+{
+  "name": "task-hunters",
+  "compatibility_date": "2026-08-05",
+  "assets": {
+    "directory": "./dist"
+  },
+  "build": {
+    "command": "npm run build"
+  }
+}
