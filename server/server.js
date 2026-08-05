@@ -818,6 +818,7 @@ app.post('/api/auth/google', authRouteLimiter, validateBody(googleAuthSchema), a
           email,
           passwordHash,
           role: assignedRole,
+          authProvider: 'GOOGLE',
           balance: 0.0,
         }
       });
