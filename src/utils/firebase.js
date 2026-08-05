@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, initializeAuth, browserLocalPersistence, GoogleAuthProvider } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBdjoL_Dy4per5vG6l2-kbZ2bHe4UyGkK0",
@@ -13,7 +13,17 @@ const firebaseConfig = {
 
 // Initialize Firebase securely
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
+
+let auth;
+try {
+  // Use initializeAuth to explicitly set localStorage persistence, bypassing IndexedDB flakiness
+  // which causes the "Database is closing/hidden" error in Chrome and Safari.
+  auth = initializeAuth(app, {
+    persistence: browserLocalPersistence
+  });
+} catch (e) {
+  auth = getAuth(app);
+}
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
