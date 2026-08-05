@@ -10,7 +10,8 @@ import {
   AlertCircle, 
   Send, 
   Trash2,
-  ArrowLeft
+  ArrowLeft,
+  Folder
 } from 'lucide-react';
 
 export default function TaskWorkspacePage({ setActiveTab }) {
@@ -207,6 +208,27 @@ export default function TaskWorkspacePage({ setActiveTab }) {
             <div className="p-4 rounded-xl bg-dark-bg border border-dark-border font-mono text-xs text-brand-100 leading-relaxed relative select-all">
               {activeTask.contentToPost}
             </div>
+
+            {activeTask.driveLink && (
+              <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Folder className="w-4 h-4 text-amber-400" /> Task Images & Attachments (Google Drive)
+                  </span>
+                  <a
+                    href={activeTask.driveLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-md"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Open Google Drive Images
+                  </a>
+                </div>
+                <p className="text-[11px] text-amber-200/80 font-medium">
+                  Use the images/media from this Google Drive folder when completing your post task.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Step 3: Submit Live Proof Link Form */}

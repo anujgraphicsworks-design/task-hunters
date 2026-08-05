@@ -16,7 +16,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -31,7 +31,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
     }
 
     if (mode === 'LOGIN') {
-      const success = loginUser(email, password, rememberMe);
+      const success = await loginUser(email, password, rememberMe);
       if (success) {
         if (onSuccess) onSuccess();
         if (onClose) onClose();
@@ -41,7 +41,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
         setErrorMessage("Please enter your full name.");
         return;
       }
-      const success = registerUser(name, email, password, rememberMe);
+      const success = await registerUser(name, email, password, rememberMe);
       if (success) {
         if (onSuccess) onSuccess();
         if (onClose) onClose();

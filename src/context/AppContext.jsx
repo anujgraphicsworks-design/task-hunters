@@ -452,14 +452,55 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Fetch all users from backend DB (Google OAuth + Manual Email users)
+  const fetchAllUsersFromBackend = async () => {
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/admin/users`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const users = await res.json();
+        if (Array.isArray(users)) {
+          setMicrotaskers(users.map(u => ({
+            id: u.id,
+            name: u.name || u.email.split('@')[0],
+            email: u.email,
+            role: u.role || 'USER',
+            authProvider: u.authProvider || 'EMAIL',
+            balance: u.balance || 0.0,
+            redditUsername: u.redditUsername || '',
+            isRedditApproved: u.isRedditApproved || false,
+            redditAccounts: u.redditAccounts ? (typeof u.redditAccounts === 'string' ? JSON.parse(u.redditAccounts) : u.redditAccounts) : [],
+            createdAt: u.createdAt
+          })));
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch user list from backend:", e);
+    }
+  };
+
   // Admin / Mod Approval of Reddit ID & Microtaskers
-  const approveMicrotasker = (userId) => {
+  const approveMicrotasker = async (userId, redditHandle) => {
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (token) {
+        await fetch(`${API_BASE_URL}/admin/users/approve-reddit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ userId, redditUsername: redditHandle })
+        }).catch(() => null);
+      }
+    } catch (e) {}
+
     setMicrotaskers(prev => prev.map(m => {
       if (m.id === userId) {
         const approvedAccounts = (m.redditAccounts || []).map(acc => ({ ...acc, isApproved: true }));
         return {
           ...m,
-          redditAccounts: approvedAccounts,
+          redditAccounts: approvedAccounts.length > 0 ? approvedAccounts : [{ username: redditHandle || m.redditUsername, isApproved: true }],
           isApprovedHunter: true,
           isRedditApproved: true,
           status: 'APPROVED'
@@ -469,25 +510,29 @@ export function AppProvider({ children }) {
     }));
 
     if (authState.user && authState.user.id === userId) {
-      setAuthState(prev => {
-        const approvedAccounts = (prev.user.redditAccounts || []).map(acc => ({ ...acc, isApproved: true }));
-        return {
-          ...prev,
-          user: { 
-            ...prev.user, 
-            redditAccounts: approvedAccounts,
-            isRedditApproved: true 
-          }
-        };
-      });
+      setAuthState(prev => ({
+        ...prev,
+        user: { ...prev.user, isRedditApproved: true }
+      }));
     }
 
     if (showToast) {
-      showToast("User Reddit IDs approved! Task claiming unlocked.", "success");
+      showToast("User Reddit ID approved!", "success");
     }
   };
 
-  const revokeMicrotasker = (userId) => {
+  const revokeMicrotasker = async (userId) => {
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (token) {
+        await fetch(`${API_BASE_URL}/admin/users/reject-reddit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ userId })
+        }).catch(() => null);
+      }
+    } catch (e) {}
+
     setMicrotaskers(prev => prev.map(m => {
       if (m.id === userId) {
         const revokedAccounts = (m.redditAccounts || []).map(acc => ({ ...acc, isApproved: false }));
@@ -503,17 +548,10 @@ export function AppProvider({ children }) {
     }));
 
     if (authState.user && authState.user.id === userId) {
-      setAuthState(prev => {
-        const revokedAccounts = (prev.user.redditAccounts || []).map(acc => ({ ...acc, isApproved: false }));
-        return {
-          ...prev,
-          user: {
-            ...prev.user,
-            redditAccounts: revokedAccounts,
-            isRedditApproved: false
-          }
-        };
-      });
+      setAuthState(prev => ({
+        ...prev,
+        user: { ...prev.user, isRedditApproved: false }
+      }));
     }
 
     if (showToast) {
@@ -852,7 +890,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const createTask = (taskData) => {
+  const createTask = async (taskData) => {
     const newTask = {
       id: `task-${Date.now()}`,
       type: taskData.type || 'REDDIT_COMMENT',
@@ -860,6 +898,7 @@ export function AppProvider({ children }) {
       targetPostUrl: taskData.targetPostUrl,
       teaserText: taskData.teaserText || taskData.contentToPost || `Task in ${taskData.subreddit}`,
       contentToPost: taskData.contentToPost,
+      driveLink: taskData.driveLink || '',
       reward: parseFloat(taskData.reward) || 1.00,
       timeLimitMins: parseInt(taskData.timeLimitMins) || 360,
       guidelines: taskData.guidelines || 'Account age > 30 days. Comment must stay live.',
@@ -867,16 +906,43 @@ export function AppProvider({ children }) {
       createdAt: new Date().toISOString(),
     };
 
-    setTasks(prev => [newTask, ...prev]);
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (token) {
+        const res = await fetch(`${API_BASE_URL}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(newTask)
+        });
+        if (res.ok) {
+          const serverTask = await res.json();
+          setTasks(prev => [serverTask, ...prev]);
+          if (showToast) showToast(`Task published to ${serverTask.subreddit} marketplace!`, "success");
+          return serverTask;
+        }
+      }
+    } catch (e) {}
 
+    setTasks(prev => [newTask, ...prev]);
     if (showToast) {
       showToast(`Task published to ${newTask.subreddit} marketplace!`, "success");
     }
     return newTask;
   };
 
-  const updateTask = (updatedTask) => {
+  const updateTask = async (updatedTask) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? { ...t, ...updatedTask } : t));
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (token && updatedTask.id) {
+        await fetch(`${API_BASE_URL}/tasks/${updatedTask.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(updatedTask)
+        }).catch(() => null);
+      }
+    } catch (e) {}
+
     if (showToast) {
       showToast("Task updated in database!", "success");
     }
@@ -1013,6 +1079,7 @@ export function AppProvider({ children }) {
         isAuthenticated: authState.isAuthenticated,
         user: authState.user,
         microtaskers,
+        fetchAllUsersFromBackend,
         approveMicrotasker,
         revokeMicrotasker,
         submitRedditUsername,

@@ -10,17 +10,21 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(uuid())
-  email          String          @unique
-  name           String?
-  passwordHash   String
-  role           String          @default("USER") // "USER" | "MODERATOR" | "ADMIN"
-  balance        Float           @default(0.0)
-  upiId          String?
-  cryptoAddress  String?
-  createdAt      DateTime        @default(now())
-  taskClaims     TaskClaim[]
-  payoutRequests PayoutRequest[]
+  id               String          @id @default(uuid())
+  email            String          @unique
+  name             String?
+  passwordHash     String
+  role             String          @default("USER") // "USER" | "MODERATOR" | "ADMIN"
+  authProvider     String          @default("EMAIL") // "GOOGLE" | "EMAIL"
+  balance          Float           @default(0.0)
+  upiId            String?
+  cryptoAddress    String?
+  redditUsername   String?
+  isRedditApproved Boolean         @default(false)
+  redditAccounts   String?         // JSON array of linked reddit handles
+  createdAt        DateTime        @default(now())
+  taskClaims       TaskClaim[]
+  payoutRequests   PayoutRequest[]
 }
 
 model Task {
@@ -30,6 +34,7 @@ model Task {
   targetPostUrl String
   teaserText    String?
   contentToPost String
+  driveLink     String?     // Google Drive link for post task images/assets
   reward        Float       @default(1.00)
   timeLimitMins Int         @default(360) // 6 Hours
   guidelines    String?

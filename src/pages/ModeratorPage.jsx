@@ -44,6 +44,7 @@ export default function ModeratorPage() {
   const [targetPostUrlInput, setTargetPostUrlInput] = useState('');
   const [teaserTextInput, setTeaserTextInput] = useState('');
   const [contentToPostInput, setContentToPostInput] = useState('');
+  const [driveLinkInput, setDriveLinkInput] = useState('');
   const [rewardInput, setRewardInput] = useState(globalRates.commentRate);
   const [timeLimitMinsInput, setTimeLimitMinsInput] = useState(globalRates.defaultTimerMins);
   const [guidelinesInput, setGuidelinesInput] = useState('Account age > 30 days. Comment must stay live.');
@@ -73,15 +74,17 @@ export default function ModeratorPage() {
       targetPostUrl: targetPostUrlInput,
       teaserText: teaserTextInput || `Reddit task in ${sub}`,
       contentToPost: contentToPostInput,
+      driveLink: driveLinkInput,
       reward: rewardInput,
       timeLimitMins: timeLimitMinsInput,
       guidelines: guidelinesInput,
     });
 
-    setSubredditInput('');
     setTargetPostUrlInput('');
-    setTeaserTextInput('');
     setContentToPostInput('');
+    setTeaserTextInput('');
+    setDriveLinkInput('');
+    setSubredditInput('');
   };
 
   const copyToClipboard = (text, id) => {
@@ -434,6 +437,17 @@ export default function ModeratorPage() {
                 value={contentToPostInput}
                 onChange={(e) => setContentToPostInput(e.target.value)}
                 className="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-xs text-white font-mono placeholder-dark-muted focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-dark-light">Google Drive Link (Post Images / Assets)</label>
+              <input
+                type="url"
+                placeholder="https://drive.google.com/drive/folders/..."
+                value={driveLinkInput}
+                onChange={(e) => setDriveLinkInput(e.target.value)}
+                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-amber-300 font-mono placeholder-dark-muted focus:outline-none focus:border-purple-500"
               />
             </div>
 

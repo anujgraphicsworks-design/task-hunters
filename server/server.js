@@ -441,6 +441,7 @@ async function authenticateToken(req, res, next) {
           email: emailLower,
           name: firebaseUser.name || firebaseUser.email.split('@')[0],
           role: role,
+          authProvider: 'GOOGLE',
           passwordHash: '', // Social/Firebase auth users do not need standard passwordHash
           balance: 0.00
         }
@@ -500,6 +501,7 @@ const createTaskSchema = z.object({
   targetPostUrl: z.string().trim().url('Target post URL must be a valid HTTP/HTTPS URL').max(1000),
   teaserText: z.string().trim().max(500).optional(),
   contentToPost: z.string().trim().min(5, 'Content must be at least 5 characters').max(5000),
+  driveLink: z.string().trim().max(1000).optional().or(z.literal('')),
   reward: z.number().positive('Reward must be greater than 0').max(1000).default(1.00),
   timeLimitMins: z.number().int().min(15).max(10080).default(360),
   guidelines: z.string().trim().max(1000).optional()
@@ -709,6 +711,7 @@ app.post('/api/auth/register', authRouteLimiter, validateBody(registerSchema), a
         email: lowerEmail,
         passwordHash,
         role: assignedRole,
+        authProvider: 'EMAIL',
         balance: 0.0,
       }
     });
@@ -868,9 +871,9 @@ app.post('/api/auth/delete-account', authenticateToken, authedActionRateLimiter,
   }
 });
 
-// --- ADMIN API ROUTES (AUTHENTICATED & ADMIN ROLE PROTECTED) ---
+// --- ADMIN API ROUTES (AUTHENTICATED & ADMIN/MODERATOR ROLE PROTECTED) ---
 
-app.get('/api/admin/users', authenticateToken, requireRole('ADMIN'), authedActionRateLimiter, async (req, res) => {
+app.get('/api/admin/users', authenticateToken, requireRole('ADMIN', 'MODERATOR'), authedActionRateLimiter, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
@@ -879,15 +882,121 @@ app.get('/api/admin/users', authenticateToken, requireRole('ADMIN'), authedActio
         name: true,
         email: true,
         role: true,
+        authProvider: true,
         balance: true,
         upiId: true,
         cryptoAddress: true,
+        redditUsername: true,
+        isRedditApproved: true,
+        redditAccounts: true,
         createdAt: true,
       }
     });
     res.json(users);
   } catch (err) {
     return sendSafeError(res, err, 500, 'Failed to fetch users list.');
+  }
+});
+
+// Admin / Moderator Endpoint: 1-Click Approve Reddit ID
+app.post('/api/admin/users/approve-reddit', authenticateToken, requireRole('ADMIN', 'MODERATOR'), authedActionRateLimiter, async (req, res) => {
+  try {
+    const { userId, redditUsername } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    let updatedAccounts = [];
+    if (user.redditAccounts) {
+      try {
+        const parsed = JSON.parse(user.redditAccounts);
+        updatedAccounts = parsed.map(acc => ({ ...acc, isApproved: true }));
+      } catch (e) {}
+    }
+    if (updatedAccounts.length === 0 && (redditUsername || user.redditUsername)) {
+      const handle = redditUsername || user.redditUsername;
+      updatedAccounts = [{ username: handle, isApproved: true }];
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isRedditApproved: true,
+        redditUsername: redditUsername || user.redditUsername,
+        redditAccounts: JSON.stringify(updatedAccounts)
+      }
+    });
+
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Failed to approve user Reddit ID.');
+  }
+});
+
+// Admin / Moderator Endpoint: 1-Click Reject/Revoke Reddit ID
+app.post('/api/admin/users/reject-reddit', authenticateToken, requireRole('ADMIN', 'MODERATOR'), authedActionRateLimiter, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    let updatedAccounts = [];
+    if (user.redditAccounts) {
+      try {
+        const parsed = JSON.parse(user.redditAccounts);
+        updatedAccounts = parsed.map(acc => ({ ...acc, isApproved: false }));
+      } catch (e) {}
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isRedditApproved: false,
+        redditAccounts: JSON.stringify(updatedAccounts)
+      }
+    });
+
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Failed to revoke user Reddit ID.');
+  }
+});
+
+// User Endpoint: Submit Reddit Username for approval
+app.post('/api/user/submit-reddit', authenticateToken, authedActionRateLimiter, async (req, res) => {
+  try {
+    const { redditUsername } = req.body;
+    if (!redditUsername) return res.status(400).json({ error: 'redditUsername is required.' });
+
+    const cleanUsername = redditUsername.trim().startsWith('u/') ? redditUsername.trim() : `u/${redditUsername.trim()}`;
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    let accounts = [];
+    if (user.redditAccounts) {
+      try { accounts = JSON.parse(user.redditAccounts); } catch (e) {}
+    }
+    const exists = accounts.some(acc => acc.username.toLowerCase() === cleanUsername.toLowerCase());
+    if (!exists) {
+      accounts.push({ username: cleanUsername, isApproved: false });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.userId },
+      data: {
+        redditUsername: cleanUsername,
+        redditAccounts: JSON.stringify(accounts),
+        isRedditApproved: exists ? user.isRedditApproved : false
+      }
+    });
+
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Failed to submit Reddit username.');
   }
 });
 
@@ -908,7 +1017,7 @@ app.get('/api/tasks', publicRateLimiter, async (req, res) => {
 // Create Task (Requires Authentication & ADMIN/MODERATOR Role)
 app.post('/api/tasks', authenticateToken, requireRole('ADMIN', 'MODERATOR'), authedActionRateLimiter, validateBody(createTaskSchema), async (req, res) => {
   try {
-    const { type, subreddit, targetPostUrl, teaserText, contentToPost, reward, timeLimitMins, guidelines } = req.body;
+    const { type, subreddit, targetPostUrl, teaserText, contentToPost, driveLink, reward, timeLimitMins, guidelines } = req.body;
 
     const task = await prisma.task.create({
       data: {
@@ -917,6 +1026,7 @@ app.post('/api/tasks', authenticateToken, requireRole('ADMIN', 'MODERATOR'), aut
         targetPostUrl,
         teaserText: teaserText || contentToPost.slice(0, 100),
         contentToPost,
+        driveLink: driveLink || null,
         reward: reward || 1.00,
         timeLimitMins: timeLimitMins || 360,
         guidelines: guidelines || 'Account age > 30 days. Comment must stay live.',
@@ -927,6 +1037,44 @@ app.post('/api/tasks', authenticateToken, requireRole('ADMIN', 'MODERATOR'), aut
     res.json(task);
   } catch (err) {
     return sendSafeError(res, err, 500, 'Task creation failed.');
+  }
+});
+
+// Edit Task Endpoint
+app.put('/api/tasks/:id', authenticateToken, requireRole('ADMIN', 'MODERATOR'), authedActionRateLimiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, subreddit, targetPostUrl, teaserText, contentToPost, driveLink, reward, timeLimitMins, guidelines } = req.body;
+
+    const task = await prisma.task.update({
+      where: { id },
+      data: {
+        ...(type && { type }),
+        ...(subreddit && { subreddit: subreddit.startsWith('r/') ? subreddit : `r/${subreddit}` }),
+        ...(targetPostUrl && { targetPostUrl }),
+        ...(teaserText !== undefined && { teaserText }),
+        ...(contentToPost && { contentToPost }),
+        ...(driveLink !== undefined && { driveLink }),
+        ...(reward !== undefined && { reward }),
+        ...(timeLimitMins !== undefined && { timeLimitMins }),
+        ...(guidelines !== undefined && { guidelines })
+      }
+    });
+
+    res.json(task);
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Task update failed.');
+  }
+});
+
+// Delete Task Endpoint
+app.delete('/api/tasks/:id', authenticateToken, requireRole('ADMIN', 'MODERATOR'), authedActionRateLimiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.task.delete({ where: { id } });
+    res.json({ success: true, message: 'Task deleted.' });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Task deletion failed.');
   }
 });
 

@@ -79,10 +79,17 @@ export default function BackendControlCenter() {
     removeAuthorizedMod,
     sheetLogs,
     microtaskers,
+    fetchAllUsersFromBackend,
     approveMicrotasker,
     revokeMicrotasker,
     theme
   } = useApp();
+
+  useEffect(() => {
+    if (fetchAllUsersFromBackend) {
+      fetchAllUsersFromBackend();
+    }
+  }, []);
 
   const isDark = theme === 'dark';
   const cardBgClass = isDark ? 'bg-[#121826] border-[#202B3F] text-slate-100' : 'bg-white border-slate-200 text-slate-900 shadow-sm';
@@ -160,6 +167,7 @@ export default function BackendControlCenter() {
   const [targetPostUrlInput, setTargetPostUrlInput] = useState('');
   const [teaserTextInput, setTeaserTextInput] = useState('');
   const [contentToPostInput, setContentToPostInput] = useState('');
+  const [driveLinkInput, setDriveLinkInput] = useState('');
   const [rewardInput, setRewardInput] = useState(globalRates.commentRate);
   const [timeLimitMinsInput, setTimeLimitMinsInput] = useState(globalRates.defaultTimerMins);
   const [guidelinesInput, setGuidelinesInput] = useState('Account age > 30 days. Comment must stay live.');
@@ -408,6 +416,7 @@ export default function BackendControlCenter() {
       targetPostUrl: targetPostUrlInput,
       teaserText: teaserTextInput || contentToPostInput || `Reddit task in ${sub}`,
       contentToPost: contentToPostInput,
+      driveLink: driveLinkInput,
       reward: rewardInput,
       timeLimitMins: timeLimitMinsInput,
       guidelines: guidelinesInput,
@@ -417,6 +426,7 @@ export default function BackendControlCenter() {
     setTargetPostUrlInput('');
     setTeaserTextInput('');
     setContentToPostInput('');
+    setDriveLinkInput('');
   };
 
   const copyToClipboard = (text, id) => {
@@ -1332,9 +1342,11 @@ export default function BackendControlCenter() {
                     <th className="py-3.5 px-4">User ID</th>
                     <th className="py-3.5 px-4">Name</th>
                     <th className="py-3.5 px-4">Email</th>
+                    <th className="py-3.5 px-4">Auth Method</th>
                     <th className="py-3.5 px-4">Reddit ID</th>
                     <th className="py-3.5 px-4">Role</th>
-                    <th className="py-3.5 px-4">Status</th>
+                    <th className="py-3.5 px-4">Balance</th>
+                    <th className="py-3.5 px-4">Reddit Status</th>
                     <th className="py-3.5 px-4 text-right">Approval Action</th>
                   </tr>
                 )}
@@ -1375,11 +1387,19 @@ export default function BackendControlCenter() {
               <tbody className="divide-y divide-dark-border/60">
                 {dbTableSelect === 'USERS' && microtaskers.map(m => (
                   <tr key={m.id} className="hover:bg-dark-card/50 transition-colors">
-                    <td className="py-3.5 px-4 text-brand-300 font-bold">{m.id}</td>
+                    <td className="py-3.5 px-4 text-brand-300 font-bold truncate max-w-[100px]">{m.id}</td>
                     <td className="py-3.5 px-4 text-white font-bold">{m.name}</td>
                     <td className="py-3.5 px-4 text-cyan-400">{m.email}</td>
+                    <td className="py-3.5 px-4">
+                      {m.authProvider === 'GOOGLE' ? (
+                        <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold text-[10px]">GOOGLE</span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded bg-slate-500/20 text-slate-300 border border-slate-500/40 font-bold text-[10px]">EMAIL/PASS</span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-4 font-bold text-amber-300">{m.redditUsername || 'None'}</td>
                     <td className="py-3.5 px-4 font-bold">{m.role}</td>
+                    <td className="py-3.5 px-4 font-bold text-emerald-400">${(m.balance || 0).toFixed(2)}</td>
                     <td className="py-3.5 px-4">
                       {m.isApprovedHunter || m.isRedditApproved ? (
                         <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">APPROVED</span>
@@ -1390,8 +1410,8 @@ export default function BackendControlCenter() {
                     <td className="py-3.5 px-4 text-right">
                       {!(m.isApprovedHunter || m.isRedditApproved) ? (
                         <button
-                          onClick={() => approveMicrotasker(m.id)}
-                          className="px-2.5 py-1 rounded bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-600 transition-all"
+                          onClick={() => approveMicrotasker(m.id, m.redditUsername)}
+                          className="px-2.5 py-1 rounded bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-600 transition-all shadow-sm"
                         >
                           Approve Reddit ID
                         </button>
@@ -1592,6 +1612,17 @@ export default function BackendControlCenter() {
                   value={contentToPostInput}
                   onChange={(e) => setContentToPostInput(e.target.value)}
                   className="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-xs text-white font-mono placeholder-dark-muted focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-dark-light">Google Drive Link (Post Images / Assets)</label>
+                <input
+                  type="url"
+                  placeholder="https://drive.google.com/drive/folders/..."
+                  value={driveLinkInput}
+                  onChange={(e) => setDriveLinkInput(e.target.value)}
+                  className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-amber-300 font-mono placeholder-dark-muted focus:outline-none focus:border-brand-500"
                 />
               </div>
 

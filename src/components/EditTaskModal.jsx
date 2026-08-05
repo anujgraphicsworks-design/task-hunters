@@ -9,7 +9,7 @@ export default function EditTaskModal({ task, onClose }) {
   const [subreddit, setSubreddit] = useState(task.subreddit || '');
   const [targetPostUrl, setTargetPostUrl] = useState(task.targetPostUrl || '');
   const [teaserText, setTeaserText] = useState(task.teaserText || '');
-  const [contentToPost, setContentToPost] = useState(task.contentToPost || '');
+  const [driveLink, setDriveLink] = useState(task.driveLink || '');
   const [reward, setReward] = useState(task.reward || 1.00);
   const [timeLimitMins, setTimeLimitMins] = useState(task.timeLimitMins || 360);
   const [guidelines, setGuidelines] = useState(task.guidelines || '');
@@ -32,12 +32,14 @@ export default function EditTaskModal({ task, onClose }) {
 
     const finalSub = subreddit || autoDetectSubreddit(targetPostUrl) || 'r/reddit';
 
-    updateTask(task.id, {
+    updateTask({
+      id: task.id,
       type,
       subreddit: finalSub,
       targetPostUrl,
       teaserText: teaserText || `Reddit task in ${finalSub}`,
       contentToPost,
+      driveLink,
       reward: parseFloat(reward),
       timeLimitMins: parseInt(timeLimitMins, 10),
       guidelines,
@@ -180,6 +182,17 @@ export default function EditTaskModal({ task, onClose }) {
               value={contentToPost}
               onChange={(e) => setContentToPost(e.target.value)}
               className="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-xs text-white font-mono placeholder-dark-muted focus:outline-none focus:border-brand-500"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-dark-light">Google Drive Link (Post Images / Assets)</label>
+            <input
+              type="url"
+              placeholder="https://drive.google.com/drive/folders/..."
+              value={driveLink}
+              onChange={(e) => setDriveLink(e.target.value)}
+              className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-amber-300 font-mono placeholder-dark-muted focus:outline-none focus:border-brand-500"
             />
           </div>
 
