@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "prestart": "prisma db push --schema=server/prisma/schema.prisma --accept-data-loss",
     "start": "node server/server.js",
     "dev": "vite",
     "server": "node server/server.js",
