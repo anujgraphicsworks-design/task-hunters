@@ -16,10 +16,10 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 let auth;
 try {
-  // Use initializeAuth to explicitly set localStorage persistence, bypassing IndexedDB flakiness
-  // which causes the "Database is closing/hidden" error in Chrome and Safari.
+  // Use initializeAuth to explicitly set localStorage persistence, bypassing IndexedDB flakiness.
+  // Note: persistence must be passed as an array [browserLocalPersistence] to avoid auth/argument-error.
   auth = initializeAuth(app, {
-    persistence: browserLocalPersistence
+    persistence: [browserLocalPersistence]
   });
 } catch (e) {
   auth = getAuth(app);
