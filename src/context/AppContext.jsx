@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { useToast } from './ToastContext';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signInWithPopup, 
+  signOut, 
+  updateProfile,
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { auth, googleProvider } from '../utils/firebase';
 
 const AppContext = createContext();
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005/api';
@@ -94,8 +103,9 @@ export function AppProvider({ children }) {
   };
 
   // Auth State
-  const [authState, setAuthState] = useState(() => safeJsonParse('th_auth', {
+  const [authState, setAuthState] = useState({
     isAuthenticated: false,
+    token: '',
     user: {
       id: '',
       name: '',
@@ -105,9 +115,10 @@ export function AppProvider({ children }) {
       upiId: '',
       cryptoAddress: '',
       redditUsername: '',
+      redditAccounts: [],
       isRedditApproved: false,
     }
-  }));
+  });
 
   // Microtaskers List
   const [microtaskers, setMicrotaskers] = useState(() => 
@@ -201,10 +212,74 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Save states
+  // Listen for Firebase Auth changes to dynamically synchronize user session
   useEffect(() => {
-    localStorage.setItem('th_auth', JSON.stringify(authState));
-  }, [authState]);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const idToken = await firebaseUser.getIdToken();
+          localStorage.setItem('th_jwt_token', idToken); // store as active bearer token
+
+          // Fetch user profile info from backend
+          const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`
+            },
+            body: JSON.stringify({
+              name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.user) {
+              setAuthState({
+                isAuthenticated: true,
+                token: idToken,
+                user: {
+                  id: data.user.id,
+                  name: data.user.name,
+                  email: data.user.email,
+                  role: data.user.role || 'USER',
+                  balance: data.user.balance || 0.00,
+                  upiId: data.user.upiId || '',
+                  cryptoAddress: data.user.cryptoAddress || '',
+                  redditUsername: data.user.redditUsername || '',
+                  redditAccounts: data.user.redditAccounts || [],
+                  isRedditApproved: data.user.isRedditApproved || false
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Firebase auth state synchronization failed:", err);
+        }
+      } else {
+        // Clear local state
+        localStorage.removeItem('th_jwt_token');
+        setAuthState({
+          isAuthenticated: false,
+          token: '',
+          user: {
+            id: '',
+            name: '',
+            email: '',
+            role: 'USER',
+            balance: 0.00,
+            upiId: '',
+            cryptoAddress: '',
+            redditUsername: '',
+            redditAccounts: [],
+            isRedditApproved: false
+          }
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isBackendOnline]);
 
   useEffect(() => {
     localStorage.setItem('th_microtaskers', JSON.stringify(microtaskers));
@@ -444,222 +519,135 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Auth Operations — ALL authentication goes through the backend server.
-  // No passwords or admin emails are stored in frontend code.
+  // Auth Operations — ALL authentication is offloaded to Firebase.
   const loginUser = async (email, password, rememberMe = true) => {
-    let token = '';
-    let role = 'USER';
-
     if (!isBackendOnline) {
       if (showToast) showToast("Server is offline. Please try again later.", "error");
       return false;
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const idToken = await userCredential.user.getIdToken();
+      localStorage.setItem('th_jwt_token', idToken);
+      
+      // Perform database synchronization via backend
+      const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          name: userCredential.user.displayName || email.split('@')[0]
+        })
       });
-      const data = await res.json();
+
       if (!res.ok) {
-        if (showToast) showToast(data.error || "Authentication failed.", "error");
+        const data = await res.json();
+        if (showToast) showToast(data.error || "Profile sync failed.", "error");
         return false;
       }
-      if (data.token) {
-        token = data.token;
-        localStorage.setItem('th_jwt_token', token);
-      }
-      // Role comes from the backend response, not from frontend whitelist
-      if (data.user && data.user.role) {
-        role = data.user.role;
-      }
+      
+      return true;
     } catch (err) {
-      if (showToast) showToast("Connection error. Please try again.", "error");
+      let friendlyMessage = "Authentication failed. Please verify your credentials.";
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        friendlyMessage = "Invalid email or password.";
+      } else if (err.code === 'auth/invalid-email') {
+        friendlyMessage = "Please enter a valid email address.";
+      }
+      if (showToast) showToast(friendlyMessage, "error");
       return false;
     }
-
-    const existing = microtaskers.find(m => m.email.toLowerCase() === email.toLowerCase());
-
-    const newUserObj = {
-      id: existing ? existing.id : `usr-${Date.now()}`,
-      name: existing ? existing.name : email.split('@')[0],
-      email: email,
-      role: role,
-      balance: existing ? existing.earnings : 0.00,
-      upiId: existing ? existing.upiId || '' : '',
-      cryptoAddress: '',
-      redditUsername: existing ? existing.redditUsername || '' : '',
-      isRedditApproved: existing ? existing.isRedditApproved || (role === 'ADMIN' || role === 'MODERATOR') : (role === 'ADMIN' || role === 'MODERATOR'),
-    };
-
-    setAuthState({
-      isAuthenticated: true,
-      token: token || localStorage.getItem('th_jwt_token') || '',
-      user: newUserObj,
-    });
-
-    if (showToast) {
-      showToast(`Welcome back ${newUserObj.name}! Authenticated as ${role}.`, "success");
-    }
-
-    return true;
   };
 
-  const loginWithGoogle = async (credential, rememberMe = true) => {
-    let token = '';
-    let role = 'USER';
-    let email = '';
-    let name = '';
-    let balance = 0.00;
-
+  const loginWithGoogle = async (rememberMe = true) => {
     if (!isBackendOnline) {
       if (showToast) showToast("Server is offline. Google authentication is unavailable.", "error");
       return false;
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/google`, {
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      const idToken = await userCredential.user.getIdToken();
+      localStorage.setItem('th_jwt_token', idToken);
+
+      const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          name: userCredential.user.displayName || userCredential.user.email.split('@')[0]
+        })
       });
-      const data = await res.json();
+
       if (!res.ok) {
-        if (showToast) showToast(data.error || "Google authentication failed.", "error");
+        const data = await res.json();
+        if (showToast) showToast(data.error || "Profile sync failed.", "error");
         return false;
       }
-      if (data.token) {
-        token = data.token;
-        localStorage.setItem('th_jwt_token', token);
-      }
-      if (data.user) {
-        email = data.user.email;
-        name = data.user.name;
-        role = data.user.role || 'USER';
-        balance = data.user.balance || 0.00;
-      }
+
+      return true;
     } catch (err) {
-      if (showToast) showToast("Google authentication failed. Please try again.", "error");
+      if (err.code !== 'auth/popup-closed-by-user') {
+        if (showToast) showToast("Google authentication failed. Please try again.", "error");
+      }
       return false;
     }
-
-    const existing = microtaskers.find(m => m.email.toLowerCase() === email.toLowerCase());
-
-    const newUserObj = {
-      id: existing ? existing.id : `usr-${Date.now()}`,
-      name: name,
-      email: email,
-      role: role,
-      balance: balance,
-      upiId: existing ? existing.upiId || '' : '',
-      cryptoAddress: '',
-      redditUsername: existing ? existing.redditUsername || '' : '',
-      isRedditApproved: existing ? existing.isRedditApproved || (role === 'ADMIN' || role === 'MODERATOR') : (role === 'ADMIN' || role === 'MODERATOR'),
-    };
-
-    setAuthState({
-      isAuthenticated: true,
-      token: token,
-      user: newUserObj,
-    });
-
-    if (showToast) {
-      showToast(`Welcome ${newUserObj.name}! Authenticated via Google.`, "success");
-    }
-
-    return true;
   };
 
   const registerUser = async (name, email, password, rememberMe = true) => {
-    const role = resolveRoleForEmail(email);
-    let token = '';
+    if (!isBackendOnline) {
+      if (showToast) showToast("Server is offline. Please try again later.", "error");
+      return false;
+    }
 
-    if (isBackendOnline) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password })
-        });
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, { displayName: name });
+      const idToken = await userCredential.user.getIdToken();
+      localStorage.setItem('th_jwt_token', idToken);
+
+      const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ name })
+      });
+
+      if (!res.ok) {
         const data = await res.json();
-        if (!res.ok) {
-          if (showToast) showToast(data.error || "Registration failed.", "error");
-          return false;
-        }
-        if (data.token) {
-          token = data.token;
-          localStorage.setItem('th_jwt_token', token);
-        }
-      } catch (err) {
-        // Fallback local mode
+        if (showToast) showToast(data.error || "Profile registration sync failed.", "error");
+        return false;
       }
-    }
 
-    const newUserObj = {
-      id: `usr-${Date.now()}`,
-      name: name,
-      email: email,
-      role: role,
-      balance: 0.00,
-      upiId: '',
-      cryptoAddress: '',
-      redditUsername: '',
-      isRedditApproved: (role === 'ADMIN' || role === 'MODERATOR'),
-    };
-
-    setAuthState({
-      isAuthenticated: true,
-      token: token || localStorage.getItem('th_jwt_token') || '',
-      user: newUserObj,
-    });
-
-    setMicrotaskers(prev => [
-      ...prev,
-      {
-        id: newUserObj.id,
-        name: newUserObj.name,
-        email: newUserObj.email,
-        role: newUserObj.role,
-        redditUsername: '',
-        isRedditApproved: false,
-        isApprovedHunter: false,
-        status: 'PENDING_APPROVAL',
-        redditKarma: 100,
-        tasksCompleted: 0,
-        earnings: 0.00,
-        upiId: '',
-        joinedAt: new Date().toISOString().split('T')[0]
+      return true;
+    } catch (err) {
+      let friendlyMessage = "Registration failed.";
+      if (err.code === 'auth/email-already-in-use') {
+        friendlyMessage = "An account already exists with this email address.";
+      } else if (err.code === 'auth/weak-password') {
+        friendlyMessage = "Password is too weak. Must be at least 6 characters.";
       }
-    ]);
-
-    if (showToast) {
-      showToast(`Account created successfully! Welcome ${name}.`, "success");
+      if (showToast) showToast(friendlyMessage, "error");
+      return false;
     }
-
-    return true;
   };
 
-  const logoutUser = () => {
-    localStorage.removeItem('th_jwt_token');
-    setAuthState({
-      isAuthenticated: false,
-      token: '',
-      user: {
-        id: '',
-        name: '',
-        email: '',
-        role: 'USER',
-        balance: 0.00,
-        upiId: '',
-        cryptoAddress: '',
-        redditUsername: '',
-        isRedditApproved: false,
+  const logoutUser = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem('th_jwt_token');
+      if (showToast) {
+        showToast("Logged out safely.", "info");
       }
-    });
-
-    if (showToast) {
-      showToast("Logged out safely.", "info");
+    } catch (err) {
+      console.error("Firebase logout failed:", err);
     }
   };
 

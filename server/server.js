@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import { z } from 'zod';
+import admin from 'firebase-admin';
 
 import { execSync } from 'child_process';
 
@@ -37,6 +38,83 @@ const PORT = process.env.PORT || 5005;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key_change_in_production_2026';
 const ADMIN_INITIAL_EMAIL = process.env.ADMIN_INITIAL_EMAIL || 'anuj140906@gmail.com';
 const ADMIN_INITIAL_PASSWORD = process.env.ADMIN_INITIAL_PASSWORD || 'Anuj@GareebAdmin';
+
+// Initialize Firebase Admin with Service Account or Fallback
+const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'taskhunters-online';
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('✅ Firebase Admin initialized with service account.');
+  } else {
+    admin.initializeApp({
+      projectId: firebaseProjectId
+    });
+    console.log(`✅ Firebase Admin initialized with Project ID: ${firebaseProjectId}`);
+  }
+} catch (err) {
+  console.warn('⚠️ Firebase Admin initialization deferred/failed. Will use public certificates verify token fallback:', err.message);
+}
+
+// Google Public Certificates Caching & Retrieval for Firebase token verification fallback
+let googlePublicCerts = {};
+let certsExpiry = 0;
+
+async function fetchGooglePublicCerts() {
+  if (Date.now() < certsExpiry && Object.keys(googlePublicCerts).length > 0) {
+    return googlePublicCerts;
+  }
+  try {
+    const res = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken-system@system.gserviceaccount.com');
+    if (res.ok) {
+      googlePublicCerts = await res.json();
+      certsExpiry = Date.now() + 6 * 60 * 60 * 1000; // Cache 6 hours
+    }
+  } catch (err) {
+    console.error('Failed to fetch Google public certs:', err);
+  }
+  return googlePublicCerts;
+}
+
+async function verifyFirebaseToken(token) {
+  // 1. Try Firebase Admin Verify
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    return {
+      uid: decoded.uid,
+      email: decoded.email,
+      name: decoded.name || decoded.email.split('@')[0],
+      email_verified: decoded.email_verified
+    };
+  } catch (err) {
+    // 2. Try Manual JWT Public Keys Validation
+    const decodedHeader = jwt.decode(token, { complete: true });
+    if (!decodedHeader || !decodedHeader.header || !decodedHeader.header.kid) {
+      throw new Error('Invalid token structure');
+    }
+
+    const certs = await fetchGooglePublicCerts();
+    const cert = certs[decodedHeader.header.kid];
+    if (!cert) {
+      throw new Error('Key ID certificate not found');
+    }
+
+    const decoded = jwt.verify(token, cert, {
+      audience: firebaseProjectId,
+      issuer: `https://securetoken.google.com/${firebaseProjectId}`,
+      algorithms: ['RS256']
+    });
+
+    return {
+      uid: decoded.sub,
+      email: decoded.email,
+      name: decoded.name || decoded.email.split('@')[0],
+      email_verified: decoded.email_verified
+    };
+  }
+}
 
 // Configurable Rate Limit Thresholds (Environment Variable Driven)
 const AUTH_RATE_LIMIT_MAX_PER_IP = parseInt(process.env.AUTH_RATE_LIMIT_MAX_PER_IP) || 10;
@@ -259,20 +337,57 @@ function validateBody(schema) {
 }
 
 // 6. SERVER-SIDE AUTHENTICATION & AUTHORIZATION MIDDLEWARES
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) {
     return res.status(401).json({ error: 'Authentication required. Missing Bearer token in Authorization header.' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ error: 'Access Denied: Invalid, expired, or tampered token.' });
+  try {
+    const firebaseUser = await verifyFirebaseToken(token);
+    
+    // Find or sync the user in the database
+    let dbUser = await prisma.user.findUnique({
+      where: { email: firebaseUser.email.toLowerCase() }
+    });
+
+    if (!dbUser) {
+      // Automatic user creation fallback if Firebase auth succeeded but DB row not created yet
+      const emailLower = firebaseUser.email.toLowerCase();
+      
+      // Auto-assign roles based on the same rules
+      let role = 'USER';
+      const authorizedAdmins = (process.env.AUTHORIZED_ADMINS || 'anuj140906@gmail.com').split(',').map(e => e.trim().toLowerCase());
+      const authorizedMods = (process.env.AUTHORIZED_MODS || '').split(',').map(e => e.trim().toLowerCase());
+      
+      if (authorizedAdmins.includes(emailLower)) {
+        role = 'ADMIN';
+      } else if (authorizedMods.includes(emailLower)) {
+        role = 'MODERATOR';
+      }
+
+      dbUser = await prisma.user.create({
+        data: {
+          email: emailLower,
+          name: firebaseUser.name || firebaseUser.email.split('@')[0],
+          role: role,
+          passwordHash: '', // Social/Firebase auth users do not need standard passwordHash
+          balance: 0.00
+        }
+      });
     }
-    req.user = decoded; // { userId, email, role }
+
+    req.user = { 
+      userId: dbUser.id, 
+      email: dbUser.email, 
+      role: dbUser.role 
+    };
     next();
-  });
+  } catch (err) {
+    console.error("Authentication middleware error:", err.message);
+    return res.status(403).json({ error: 'Access Denied: Invalid, expired, or tampered token.' });
+  }
 }
 
 function requireRole(...allowedRoles) {
@@ -460,6 +575,48 @@ async function seedPrimaryAdmin() {
 seedPrimaryAdmin();
 
 // --- AUTHENTICATION API ROUTES ---
+
+app.post('/api/auth/firebase-sync', authenticateToken, async (req, res) => {
+  try {
+    let user = await prisma.user.findUnique({
+      where: { id: req.user.userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User profile not found.' });
+    }
+
+    // If client supplied a custom name and DB profile still has fallback username, update it
+    const { name } = req.body;
+    if (name && name.trim() && user.name === user.email.split('@')[0]) {
+      user = await prisma.prismaUser?.update ? await prisma.prismaUser.update({
+        where: { id: user.id },
+        data: { name: name.trim() }
+      }) : await prisma.user.update({
+        where: { id: user.id },
+        data: { name: name.trim() }
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        balance: user.balance,
+        upiId: user.upiId || '',
+        cryptoAddress: user.cryptoAddress || '',
+        redditUsername: user.redditUsername || '',
+        redditAccounts: user.redditAccounts || [],
+        isRedditApproved: user.isRedditApproved || false
+      }
+    });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Firebase profile synchronization failed.');
+  }
+});
 
 app.post('/api/auth/register', authRouteLimiter, validateBody(registerSchema), async (req, res) => {
   try {
