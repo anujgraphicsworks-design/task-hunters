@@ -306,6 +306,10 @@ const deleteAccountSchema = z.object({
   targetUserId: z.string().max(100).optional()
 });
 
+const googleAuthSchema = z.object({
+  credential: z.string().min(10, 'Google credential token is required')
+});
+
 const createTaskSchema = z.object({
   type: z.enum(['REDDIT_COMMENT', 'REDDIT_POST']).default('REDDIT_COMMENT'),
   subreddit: z.string().trim().regex(/^r\/[a-zA-Z0-9_]+$/, 'Subreddit must be in format r/SubredditName'),
@@ -535,6 +539,70 @@ app.post('/api/auth/login', authRouteLimiter, validateBody(loginSchema), async (
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, balance: user.balance, upiId: user.upiId, cryptoAddress: user.cryptoAddress } });
   } catch (err) {
     return sendSafeError(res, err, 500, 'Authentication failed.');
+  }
+});
+
+app.post('/api/auth/google', authRouteLimiter, validateBody(googleAuthSchema), async (req, res) => {
+  try {
+    const { credential } = req.body;
+    
+    // Call Google's tokeninfo API to securely verify the signature and retrieve token payload
+    const googleVerifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!googleVerifyRes.ok) {
+      return res.status(401).json({ error: 'Invalid Google authentication credential.' });
+    }
+    
+    const payload = await googleVerifyRes.json();
+    
+    // Safety check on issuer
+    if (payload.iss !== 'accounts.google.com' && payload.iss !== 'https://accounts.google.com') {
+      return res.status(401).json({ error: 'Security Reject: Google token issuer mismatch.' });
+    }
+
+    // Safety check on email verification status
+    if (payload.email_verified !== 'true' && payload.email_verified !== true) {
+      return res.status(401).json({ error: 'Google email is not verified.' });
+    }
+
+    // Optional Audience restriction if GOOGLE_CLIENT_ID is set in .env
+    const expectedClientId = process.env.GOOGLE_CLIENT_ID;
+    if (expectedClientId && payload.aud !== expectedClientId) {
+      return res.status(401).json({ error: 'Security Reject: Client ID mismatch.' });
+    }
+
+    const email = payload.email.toLowerCase().trim();
+    const name = payload.name || email.split('@')[0];
+
+    let user = await prisma.user.findUnique({ where: { email } });
+    const assignedRole = await resolveRole(email);
+
+    if (!user) {
+      // Create user with a secure random hash for the password field since they authenticate via Google OAuth
+      const secureRandomPassword = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const passwordHash = await bcrypt.hash(secureRandomPassword, 10);
+      
+      user = await prisma.user.create({
+        data: {
+          name,
+          email,
+          passwordHash,
+          role: assignedRole,
+          balance: 0.0,
+        }
+      });
+    } else {
+      if (user.role !== assignedRole) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { role: assignedRole }
+        });
+      }
+    }
+
+    const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, balance: user.balance, upiId: user.upiId, cryptoAddress: user.cryptoAddress } });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Google authentication failed.');
   }
 });
 

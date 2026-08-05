@@ -422,6 +422,71 @@ export function AppProvider({ children }) {
     return true;
   };
 
+  const loginWithGoogle = async (credential, rememberMe = true) => {
+    let token = '';
+    let role = 'USER';
+    let email = '';
+    let name = '';
+    let balance = 0.00;
+
+    if (!isBackendOnline) {
+      if (showToast) showToast("Server is offline. Google authentication is unavailable.", "error");
+      return false;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (showToast) showToast(data.error || "Google authentication failed.", "error");
+        return false;
+      }
+      if (data.token) {
+        token = data.token;
+        localStorage.setItem('th_jwt_token', token);
+      }
+      if (data.user) {
+        email = data.user.email;
+        name = data.user.name;
+        role = data.user.role || 'USER';
+        balance = data.user.balance || 0.00;
+      }
+    } catch (err) {
+      if (showToast) showToast("Google authentication failed. Please try again.", "error");
+      return false;
+    }
+
+    const existing = microtaskers.find(m => m.email.toLowerCase() === email.toLowerCase());
+
+    const newUserObj = {
+      id: existing ? existing.id : `usr-${Date.now()}`,
+      name: name,
+      email: email,
+      role: role,
+      balance: balance,
+      upiId: existing ? existing.upiId || '' : '',
+      cryptoAddress: '',
+      redditUsername: existing ? existing.redditUsername || '' : '',
+      isRedditApproved: existing ? existing.isRedditApproved || (role === 'ADMIN' || role === 'MODERATOR') : (role === 'ADMIN' || role === 'MODERATOR'),
+    };
+
+    setAuthState({
+      isAuthenticated: true,
+      token: token,
+      user: newUserObj,
+    });
+
+    if (showToast) {
+      showToast(`Welcome ${newUserObj.name}! Authenticated via Google.`, "success");
+    }
+
+    return true;
+  };
+
   const registerUser = async (name, email, password, rememberMe = true) => {
     const role = resolveRoleForEmail(email);
     let token = '';
@@ -887,6 +952,7 @@ export function AppProvider({ children }) {
         isBackendOnline,
         backendLatency,
         loginUser,
+        loginWithGoogle,
         registerUser,
         logoutUser,
         deleteAccount,
