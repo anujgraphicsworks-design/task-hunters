@@ -1,0 +1,75 @@
+// Prisma Schema for Task Hunters Reddit Micro-Task Platform (SQLite Compatible)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  name           String?
+  passwordHash   String
+  role           String          @default("USER") // "USER" | "MODERATOR" | "ADMIN"
+  balance        Float           @default(0.0)
+  upiId          String?
+  cryptoAddress  String?
+  createdAt      DateTime        @default(now())
+  taskClaims     TaskClaim[]
+  payoutRequests PayoutRequest[]
+}
+
+model Task {
+  id            String      @id @default(uuid())
+  type          String      @default("REDDIT_COMMENT") // "REDDIT_COMMENT" | "REDDIT_POST"
+  subreddit     String
+  targetPostUrl String
+  teaserText    String?
+  contentToPost String
+  reward        Float       @default(1.00)
+  timeLimitMins Int         @default(360) // 6 Hours
+  guidelines    String?
+  status        String      @default("AVAILABLE") // "AVAILABLE" | "CLAIMED" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED"
+  createdAt     DateTime    @default(now())
+  claims        TaskClaim[]
+}
+
+model TaskClaim {
+  id           String      @id @default(uuid())
+  taskId       String
+  userId       String
+  status       String      @default("CLAIMED")
+  claimedAt    DateTime    @default(now())
+  expiresAt    DateTime
+  proofUrl     String?
+  submittedAt  DateTime?
+  reviewedBy   String?
+  reviewReason String?
+
+  task Task @relation(fields: [taskId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+}
+
+model PayoutRequest {
+  id          String    @id @default(uuid())
+  userId      String
+  amount      Float
+  method      String    @default("UPI") // "UPI" | "CRYPTO"
+  destination String
+  status      String    @default("PENDING") // "PENDING" | "PAID" | "REJECTED"
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AuthorizedEmail {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  role      String   @default("MODERATOR")
+  createdAt DateTime @default(now())
+}
