@@ -36,9 +36,9 @@ export function isValidRedditUrl(url) {
   return redditRegex.test(trimmed);
 }
 
-// Admin Gmail Whitelist (Includes Primary Admin ID: anuj140906@gmail.com)
-const DEFAULT_AUTHORIZED_ADMINS = ['anuj140906@gmail.com', 'admin@taskhunters.io', 'anuj@taskhunters.io'];
-const DEFAULT_AUTHORIZED_MODS = ['mod@taskhunters.io', 'moderator@taskhunters.io'];
+// Admin Gmail Whitelist — ONLY verified admin accounts
+const DEFAULT_AUTHORIZED_ADMINS = ['anuj140906@gmail.com'];
+const DEFAULT_AUTHORIZED_MODS = [];
 
 // Default Sample Registered Microtaskers
 const INITIAL_MICROTASKERS = [

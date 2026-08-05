@@ -14,12 +14,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleQuickAdminLogin = () => {
-    const success = loginUser('anuj140906@gmail.com', 'Anuj@Admin2026!', rememberMe) || registerUser('Anuj Admin', 'anuj140906@gmail.com', 'Anuj@Admin2026!', rememberMe);
-    if (onSuccess) onSuccess();
-    if (onClose) onClose();
-  };
-
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
