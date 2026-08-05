@@ -201,7 +201,15 @@ function recordFailedAuth(email) {
   if (!email) return;
   const key = email.toLowerCase().trim();
   const now = Date.now();
-  const record = accountAttemptTracker.get(key) || { attempts: 0, lastAttemptTime: now };
+  let record = accountAttemptTracker.get(key);
+  
+  // If last failed attempt was more than 30 minutes ago, reset attempt counter
+  if (record && (now - record.lastAttemptTime > 30 * 60 * 1000)) {
+    record = { attempts: 0, lastAttemptTime: now };
+  } else if (!record) {
+    record = { attempts: 0, lastAttemptTime: now };
+  }
+
   record.attempts += 1;
   record.lastAttemptTime = now;
   accountAttemptTracker.set(key, record);
