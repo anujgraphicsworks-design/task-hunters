@@ -12,7 +12,7 @@ import {
 import { auth, googleProvider } from '../utils/firebase';
 
 const AppContext = createContext();
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://task-hunters-production.up.railway.app/api';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Safe JSON Parse Helper
