@@ -218,14 +218,14 @@ export function AppProvider({ children }) {
       if (firebaseUser) {
         try {
           const idToken = await firebaseUser.getIdToken();
-          localStorage.setItem('th_jwt_token', idToken); // store as active bearer token
+          const savedToken = localStorage.getItem('th_jwt_token') || idToken;
 
           // Fetch user profile info from backend
           const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${idToken}`
+              'Authorization': `Bearer ${savedToken}`
             },
             body: JSON.stringify({
               name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
@@ -234,10 +234,12 @@ export function AppProvider({ children }) {
 
           if (res.ok) {
             const data = await res.json();
+            const activeToken = data.token || savedToken;
+            localStorage.setItem('th_jwt_token', activeToken);
             if (data.user) {
               setAuthState({
                 isAuthenticated: true,
-                token: idToken,
+                token: activeToken,
                 user: {
                   id: data.user.id,
                   name: data.user.name,
@@ -559,7 +561,6 @@ export function AppProvider({ children }) {
     try {
       const userCredential = await signInWithPopup(auth, googleProvider);
       const idToken = await userCredential.user.getIdToken();
-      localStorage.setItem('th_jwt_token', idToken);
 
       const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
         method: 'POST',
@@ -570,13 +571,38 @@ export function AppProvider({ children }) {
         body: JSON.stringify({
           name: userCredential.user.displayName || userCredential.user.email.split('@')[0]
         })
-      }).catch(() => null);
+      });
 
-      if (res && res.ok) {
+      if (res.ok) {
+        const data = await res.json();
+        const activeToken = data.token || idToken;
+        localStorage.setItem('th_jwt_token', activeToken);
+        if (data.user) {
+          setAuthState({
+            isAuthenticated: true,
+            token: activeToken,
+            user: {
+              id: data.user.id,
+              name: data.user.name,
+              email: data.user.email,
+              role: data.user.role || 'USER',
+              balance: data.user.balance || 0.00,
+              upiId: data.user.upiId || '',
+              cryptoAddress: data.user.cryptoAddress || '',
+              redditUsername: data.user.redditUsername || '',
+              redditAccounts: data.user.redditAccounts || [],
+              isRedditApproved: data.user.isRedditApproved || false
+            }
+          });
+        }
         setIsBackendOnline(true);
+        if (showToast) showToast(`Signed in as ${data.user?.name || userCredential.user.displayName}`, "success");
+        return true;
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        if (showToast) showToast(errData.error || "Google authentication sync failed.", "error");
+        return false;
       }
-
-      return true;
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
         if (showToast) showToast(`Google authentication failed: ${err.message || 'Please try again'}`, "error");
