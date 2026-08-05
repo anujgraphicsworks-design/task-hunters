@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /backend
+Disallow: /admin
+
+Sitemap: https://taskhunters.online/sitemap.xml
