@@ -36,7 +36,7 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5005;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key_change_in_production_2026';
 const ADMIN_INITIAL_EMAIL = process.env.ADMIN_INITIAL_EMAIL || 'anuj140906@gmail.com';
-const ADMIN_INITIAL_PASSWORD = process.env.ADMIN_INITIAL_PASSWORD || 'Anuj@Admin2026!';
+const ADMIN_INITIAL_PASSWORD = process.env.ADMIN_INITIAL_PASSWORD || 'Anuj@GareebAdmin';
 
 // Configurable Rate Limit Thresholds (Environment Variable Driven)
 const AUTH_RATE_LIMIT_MAX_PER_IP = parseInt(process.env.AUTH_RATE_LIMIT_MAX_PER_IP) || 10;

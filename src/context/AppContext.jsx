@@ -391,6 +391,13 @@ export function AppProvider({ children }) {
       }
     }
 
+    if (!isBackendOnline && role === 'ADMIN') {
+      if (password !== 'Anuj@GareebAdmin') {
+        if (showToast) showToast("Invalid admin password.", "error");
+        return false;
+      }
+    }
+
     const existing = microtaskers.find(m => m.email.toLowerCase() === email.toLowerCase());
 
     const newUserObj = {
