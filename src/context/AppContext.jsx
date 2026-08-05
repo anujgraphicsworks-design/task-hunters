@@ -36,18 +36,13 @@ export function isValidRedditUrl(url) {
   return redditRegex.test(trimmed);
 }
 
-// Admin Gmail Whitelist — ONLY verified admin accounts
-const DEFAULT_AUTHORIZED_ADMINS = ['anuj140906@gmail.com'];
+// Admin/Mod roles are resolved by the backend via JWT token.
+// No emails are hardcoded in the frontend to prevent credential exposure in DevTools.
+const DEFAULT_AUTHORIZED_ADMINS = [];
 const DEFAULT_AUTHORIZED_MODS = [];
 
-// Default Sample Registered Microtaskers
-const INITIAL_MICROTASKERS = [
-  { id: 'usr-admin-01', name: 'Anuj Admin', email: 'anuj140906@gmail.com', role: 'ADMIN', redditUsername: 'u/anuj_admin', isRedditApproved: true, isApprovedHunter: true, status: 'APPROVED', redditKarma: 4850, tasksCompleted: 42, earnings: 105.50, upiId: 'anuj@upi', joinedAt: '2026-08-01' },
-  { id: 'usr-hunter-01', name: 'Alex Hunter', email: 'alex.hunter@gmail.com', role: 'USER', redditUsername: 'u/alex_hunter99', isRedditApproved: true, isApprovedHunter: true, status: 'APPROVED', redditKarma: 1240, tasksCompleted: 18, earnings: 45.00, upiId: 'alex@okicici', joinedAt: '2026-08-02' },
-  { id: 'usr-hunter-02', name: 'Rohan Sharma', email: 'rohan.sharma99@gmail.com', role: 'USER', redditUsername: 'u/rohan_sharma_real', isRedditApproved: true, isApprovedHunter: true, status: 'APPROVED', redditKarma: 890, tasksCompleted: 9, earnings: 22.50, upiId: 'rohan@paytm', joinedAt: '2026-08-03' },
-  { id: 'usr-hunter-03', name: 'Priya Verma', email: 'priya.verma@gmail.com', role: 'USER', redditUsername: 'u/priya_v', isRedditApproved: false, isApprovedHunter: false, status: 'PENDING_APPROVAL', redditKarma: 350, tasksCompleted: 0, earnings: 0.00, upiId: 'priya@ybl', joinedAt: '2026-08-04' },
-  { id: 'usr-hunter-04', name: 'David Smith', email: 'david.smith@gmail.com', role: 'USER', redditUsername: 'u/david_smith_dev', isRedditApproved: false, isApprovedHunter: false, status: 'PENDING_APPROVAL', redditKarma: 150, tasksCompleted: 0, earnings: 0.00, upiId: 'david@crypto', joinedAt: '2026-08-04' },
-];
+// No sample users are hardcoded in frontend — all user data comes from the backend database.
+const INITIAL_MICROTASKERS = [];
 
 export function AppProvider({ children }) {
   const { showToast } = useToast();
@@ -365,37 +360,39 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Auth Operations
+  // Auth Operations — ALL authentication goes through the backend server.
+  // No passwords or admin emails are stored in frontend code.
   const loginUser = async (email, password, rememberMe = true) => {
-    const role = resolveRoleForEmail(email);
     let token = '';
+    let role = 'USER';
 
-    if (isBackendOnline) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          if (showToast) showToast(data.error || "Authentication failed.", "error");
-          return false;
-        }
-        if (data.token) {
-          token = data.token;
-          localStorage.setItem('th_jwt_token', token);
-        }
-      } catch (err) {
-        // Fallback local mode
-      }
+    if (!isBackendOnline) {
+      if (showToast) showToast("Server is offline. Please try again later.", "error");
+      return false;
     }
 
-    if (!isBackendOnline && role === 'ADMIN') {
-      if (password !== 'Anuj@GareebAdmin') {
-        if (showToast) showToast("Invalid admin password.", "error");
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (showToast) showToast(data.error || "Authentication failed.", "error");
         return false;
       }
+      if (data.token) {
+        token = data.token;
+        localStorage.setItem('th_jwt_token', token);
+      }
+      // Role comes from the backend response, not from frontend whitelist
+      if (data.user && data.user.role) {
+        role = data.user.role;
+      }
+    } catch (err) {
+      if (showToast) showToast("Connection error. Please try again.", "error");
+      return false;
     }
 
     const existing = microtaskers.find(m => m.email.toLowerCase() === email.toLowerCase());

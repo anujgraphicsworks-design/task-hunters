@@ -508,7 +508,7 @@ app.post('/api/auth/login', authRouteLimiter, validateBody(loginSchema), async (
       }
     } else {
       const isMatch = await bcrypt.compare(password, user.passwordHash).catch(() => false);
-      if (!isMatch && password !== 'google_verified_oauth') {
+      if (!isMatch) {
         recordFailedAuth(lowerEmail);
         return res.status(401).json({ error: 'Invalid email or password.' });
       }

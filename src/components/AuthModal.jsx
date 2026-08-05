@@ -49,17 +49,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
     }
   };
 
-  const handleGoogleSuccess = (googleUser) => {
-    if (!googleUser || !googleUser.email) return;
-    const gEmail = googleUser.email;
-    const gName = googleUser.name || gEmail.split('@')[0];
-
-    const success = loginUser(gEmail, 'google_verified_oauth', rememberMe) || registerUser(gName, gEmail, 'google_verified_oauth', rememberMe);
-    if (success) {
-      if (onSuccess) onSuccess();
-      if (onClose) onClose();
-    }
-  };
+  // Google OAuth is disabled — no handler needed until real OAuth is set up
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fadeIn">
@@ -95,10 +85,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
 
         {/* Google OAuth Authenticator Button */}
         <div className="space-y-3">
-          <GoogleOAuthButton 
-            onGoogleSuccess={handleGoogleSuccess} 
-            onError={(err) => setErrorMessage("Google authentication failed. Please sign in with email and password.")} 
-          />
+          <GoogleOAuthButton />
         </div>
 
         {/* Divider */}

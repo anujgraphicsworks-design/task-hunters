@@ -1234,7 +1234,7 @@ export default function BackendControlCenter() {
 
             <div className="p-5 rounded-2xl bg-dark-bg text-dark-light text-xs space-y-2.5 overflow-auto max-h-64 leading-relaxed shadow-inner">
               <p className="text-emerald-400">⚡ [SERVER]: Task Hunters Express Backend Server running on http://localhost:5000</p>
-              <p className="text-cyan-400">🔑 [PRIMARY ADMIN]: Whitelisted Admin: anuj140906@gmail.com</p>
+              <p className="text-cyan-400">🔑 [PRIMARY ADMIN]: Whitelisted Admin connected via secure backend</p>
               <p className="text-brand-300">🤖 [AI SUITE v3.0]: Dual AI Agents + WhatsApp Copy-Paste Image Engine active</p>
               <p className="text-amber-400">🔥 [DAEMON]: 6-Hour Task Execution Expiration Daemon active (interval 10s)</p>
               <p className="text-dark-muted">POST /api/auth/login 200 OK (12ms) - Primary Admin authenticated</p>
