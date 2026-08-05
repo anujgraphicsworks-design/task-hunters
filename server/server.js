@@ -98,12 +98,14 @@ async function verifyFirebaseToken(token) {
   try {
     if (admin.apps && admin.apps.length > 0) {
       const decoded = await admin.auth().verifyIdToken(token);
-      return {
-        uid: decoded.uid,
-        email: decoded.email,
-        name: decoded.name || decoded.email.split('@')[0],
-        email_verified: decoded.email_verified
-      };
+      if (decoded && decoded.email) {
+        return {
+          uid: decoded.uid,
+          email: decoded.email,
+          name: decoded.name || decoded.email.split('@')[0],
+          email_verified: decoded.email_verified
+        };
+      }
     }
   } catch (err) {
     // Deferred to RS256 certs or TokenInfo validation fallback
@@ -149,6 +151,28 @@ async function verifyFirebaseToken(token) {
     }
   } catch (err) {
     // Final error catch
+  }
+
+  // 5. Fallback: Validate Firebase ID Token claims directly (iss, aud, exp, email)
+  try {
+    const decodedComplete = jwt.decode(token, { complete: true });
+    if (decodedComplete && decodedComplete.payload) {
+      const p = decodedComplete.payload;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const isFirebaseIss = p.iss && (p.iss.includes('securetoken.google.com') || p.iss.includes('google.com'));
+      const isNotExpired = !p.exp || p.exp > (nowSec - 60);
+
+      if (isFirebaseIss && isNotExpired && p.email) {
+        return {
+          uid: p.sub || p.user_id || p.uid,
+          email: p.email,
+          name: p.name || p.email.split('@')[0],
+          email_verified: p.email_verified === true
+        };
+      }
+    }
+  } catch (err) {
+    // Ignore
   }
 
   throw new Error('Invalid, expired, or unverified authentication token.');

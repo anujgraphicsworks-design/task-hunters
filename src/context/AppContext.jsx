@@ -9,7 +9,7 @@ import {
   updateProfile,
   onAuthStateChanged 
 } from 'firebase/auth';
-import { auth, googleProvider } from '../utils/firebase';
+import { auth, googleProvider, browserPopupRedirectResolver } from '../utils/firebase';
 
 const AppContext = createContext();
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://task-hunters-production.up.railway.app/api';
@@ -559,7 +559,7 @@ export function AppProvider({ children }) {
 
   const loginWithGoogle = async (rememberMe = true) => {
     try {
-      const userCredential = await signInWithPopup(auth, googleProvider);
+      const userCredential = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
       const idToken = await userCredential.user.getIdToken();
 
       const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {

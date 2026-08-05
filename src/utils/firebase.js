@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, initializeAuth, browserLocalPersistence, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBdjoL_Dy4per5vG6l2-kbZ2bHe4UyGkK0",
@@ -16,10 +16,10 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 let auth;
 try {
-  // Use initializeAuth to explicitly set localStorage persistence, bypassing IndexedDB flakiness.
-  // Note: persistence must be passed as an array [browserLocalPersistence] to avoid auth/argument-error.
+  // Pass browserPopupRedirectResolver to initializeAuth so popup/redirect auth operations have the required resolver.
   auth = initializeAuth(app, {
-    persistence: [browserLocalPersistence]
+    persistence: browserLocalPersistence,
+    popupRedirectResolver: browserPopupRedirectResolver
   });
 } catch (e) {
   auth = getAuth(app);
@@ -28,4 +28,4 @@ try {
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-export { auth, googleProvider };
+export { auth, googleProvider, browserPopupRedirectResolver };
