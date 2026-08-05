@@ -7,7 +7,7 @@
     "start": "node server/server.js",
     "dev": "vite",
     "server": "node server/server.js",
-    "postinstall": "prisma generate --schema=server/prisma/schema.prisma && prisma db push --schema=server/prisma/schema.prisma",
+    "postinstall": "prisma generate --schema=server/prisma/schema.prisma",
     "build": "vite build",
     "preview": "vite preview"
   },

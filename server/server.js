@@ -11,10 +11,20 @@ import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import { z } from 'zod';
 
+import { execSync } from 'child_process';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Auto Sync Prisma Database Schema on startup
+try {
+  console.log('🔄 Syncing Prisma Database Schema...');
+  execSync('npx prisma db push --schema=server/prisma/schema.prisma', { stdio: 'inherit' });
+} catch (err) {
+  console.warn('⚠️ Prisma db push notice:', err.message);
+}
 
 // 1. ENVIRONMENT VARIABLES AUDIT & PRODUCTION ENFORCEMENT
 if (process.env.NODE_ENV === 'production') {
