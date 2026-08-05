@@ -114,44 +114,7 @@ export default function GoogleOAuthButton({ onGoogleSuccess, onError }) {
               <p className="text-xs text-gray-500">to continue to <strong>Task Hunters</strong></p>
             </div>
 
-            {/* Quick Account Selector List */}
-            <div className="space-y-3">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">Choose an account</span>
-
-              {/* Primary Admin Account */}
-              <div 
-                onClick={() => handleSelectGoogleAccount('anuj140906@gmail.com', 'Anuj Admin')}
-                className="p-3.5 rounded-xl border border-gray-200 hover:border-blue-500 hover:bg-blue-50/50 flex items-center justify-between cursor-pointer transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-sm shadow">
-                    A
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-gray-900 text-sm block">Anuj Admin</span>
-                    <span className="text-xs text-gray-500 font-mono">anuj140906@gmail.com</span>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-extrabold">ADMIN</span>
-              </div>
-
-              {/* Sample Hunter Account */}
-              <div 
-                onClick={() => handleSelectGoogleAccount('alex.hunter@gmail.com', 'Alex Hunter')}
-                className="p-3.5 rounded-xl border border-gray-200 hover:border-blue-500 hover:bg-blue-50/50 flex items-center justify-between cursor-pointer transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shadow">
-                    AH
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-gray-900 text-sm block">Alex Hunter</span>
-                    <span className="text-xs text-gray-500 font-mono">alex.hunter@gmail.com</span>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">HUNTER</span>
-              </div>
-            </div>
+            {/* Custom Google Account Input */}
 
             {/* Custom Google Account Input */}
             <form onSubmit={handleCustomGoogleSubmit} className="pt-2 border-t border-gray-100 space-y-3">

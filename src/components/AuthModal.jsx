@@ -99,22 +99,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
           </div>
         )}
 
-        {/* 1-CLICK INSTANT ADMIN LOGIN BUTTON */}
-        <div className="mb-4">
-          <button
-            onClick={handleQuickAdminLogin}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.01]"
-          >
-            <Zap className="w-4 h-4 fill-white" />
-            1-Click Instant Sign In as Admin (anuj140906@gmail.com)
-          </button>
-        </div>
-
         {/* Google OAuth Authenticator Button */}
         <div className="space-y-3">
           <GoogleOAuthButton 
             onGoogleSuccess={handleGoogleSuccess} 
-            onError={(err) => setErrorMessage("Google authentication failed. Please use 1-Click Admin Sign In.")} 
+            onError={(err) => setErrorMessage("Google authentication failed. Please sign in with email and password.")} 
           />
         </div>
 
@@ -139,7 +128,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
               <input
                 type="text"
                 required
-                placeholder="Anuj Admin"
+                placeholder="John Doe"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500"
@@ -154,7 +143,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
             <input
               type="email"
               required
-              placeholder="anuj140906@gmail.com"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 font-medium"
