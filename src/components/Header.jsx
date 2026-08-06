@@ -249,7 +249,7 @@ export default function Header({ activeTab, setActiveTab, onOpenAuth }) {
                   }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>{user.redditUsername || 'Submit Reddit ID'}</span>
+                  <span>{user.activeRedditAccount || user.redditUsername || 'Submit Reddit ID'}</span>
                 </div>
               )}
 

@@ -30,6 +30,7 @@ export default function WalletPage() {
 
   const [upiIdInput, setUpiIdInput] = useState(user.upiId || '');
   const [cryptoAddressInput, setCryptoAddressInput] = useState(user.cryptoAddress || '');
+  const [cryptoAddressError, setCryptoAddressError] = useState('');
   const [isSavingPayment, setIsSavingPayment] = useState(false);
 
   // Withdrawal form
@@ -39,8 +40,22 @@ export default function WalletPage() {
 
   const userPayouts = payouts.filter(p => p.userId === user.id);
 
+  const validatePolygonAddress = (addr) => {
+    if (!addr) return '';
+    if (!addr.startsWith('0x') || addr.length !== 42) {
+      return 'Invalid Polygon address. Must start with 0x and be 42 characters.';
+    }
+    return '';
+  };
+
   const handleSavePaymentInfo = (e) => {
     e.preventDefault();
+    const cryptoErr = validatePolygonAddress(cryptoAddressInput);
+    if (cryptoAddressInput && cryptoErr) {
+      setCryptoAddressError(cryptoErr);
+      return;
+    }
+    setCryptoAddressError('');
     setIsSavingPayment(true);
     updatePaymentInfo(upiIdInput, cryptoAddressInput);
     setTimeout(() => {
@@ -154,23 +169,33 @@ export default function WalletPage() {
               <span className="text-[10px] text-dark-muted block">Direct manual transfer to GPay, PhonePe, Paytm, BHIM.</span>
             </div>
 
-            {/* Crypto Address Field */}
+            {/* Crypto Address Field — USDT Polygon only */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-dark-light flex items-center gap-1.5">
-                <Coins className="w-4 h-4 text-cyan-400" />
-                Crypto Wallet Address (USDT TRC20 / SOL / BTC)
+                <Coins className="w-4 h-4 text-violet-400" />
+                USDT Polygon (MATIC) Wallet Address
               </label>
               <input
                 type="text"
-                placeholder="T9xK7z... or Solana / BTC wallet address"
+                placeholder="0x... (Polygon MATIC network only)"
                 value={cryptoAddressInput}
                 onChange={(e) => {
                   setCryptoAddressInput(e.target.value);
+                  setCryptoAddressError(validatePolygonAddress(e.target.value));
                   if (withdrawMethod === 'CRYPTO') setWithdrawDestination(e.target.value);
                 }}
-                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-dark-muted focus:outline-none focus:border-brand-500 font-mono transition-colors"
+                className={`w-full bg-dark-bg border rounded-xl px-4 py-2.5 text-xs text-white placeholder-dark-muted focus:outline-none font-mono transition-colors ${
+                  cryptoAddressError ? 'border-rose-500 focus:border-rose-500' : 'border-dark-border focus:border-violet-500'
+                }`}
               />
-              <span className="text-[10px] text-dark-muted block">Ensure network matches TRC20 or SOL before withdrawing.</span>
+              {cryptoAddressError ? (
+                <span className="text-[10px] text-rose-400 font-medium block">{cryptoAddressError}</span>
+              ) : (
+                <span className="text-[10px] text-dark-muted flex items-center gap-1 block">
+                  <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
+                  Polygon (MATIC) Network Only — Do NOT use other networks or funds will be lost.
+                </span>
+              )}
             </div>
 
             <button
@@ -266,12 +291,12 @@ export default function WalletPage() {
                   }}
                   className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
                     withdrawMethod === 'CRYPTO'
-                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                      ? 'bg-violet-500/20 text-violet-300 border-violet-500/50'
                       : 'bg-dark-bg text-dark-muted border-dark-border hover:text-white'
                   }`}
                 >
                   <Coins className="w-4 h-4" />
-                  USDT / Crypto
+                  USDT Polygon
                 </button>
               </div>
             </div>
@@ -282,11 +307,17 @@ export default function WalletPage() {
               <input
                 type="text"
                 required
-                placeholder={withdrawMethod === 'UPI' ? 'example@upi' : '0x... or USDT TRC20 address'}
+                placeholder={withdrawMethod === 'UPI' ? 'example@upi' : '0x... (Polygon MATIC address)'}
                 value={withdrawDestination}
                 onChange={(e) => setWithdrawDestination(e.target.value)}
                 className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-dark-muted focus:outline-none focus:border-brand-500 font-mono transition-colors"
               />
+              {withdrawMethod === 'CRYPTO' && (
+                <p className="text-[10px] text-violet-400 flex items-center gap-1 mt-1">
+                  <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
+                  Polygon (MATIC) Network Only
+                </p>
+              )}
             </div>
 
             <button

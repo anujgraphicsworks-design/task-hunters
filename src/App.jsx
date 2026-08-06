@@ -10,12 +10,16 @@ import AdminPage from './pages/AdminPage';
 import BackendControlCenter from './pages/BackendControlCenter';
 import ActiveTaskBanner from './components/ActiveTaskBanner';
 import AuthModal from './components/AuthModal';
+import DiscordGateModal from './components/DiscordGateModal';
 import { useApp } from './context/AppContext';
 
 export default function App() {
   const { activeClaim, isAuthenticated, user, theme } = useApp();
   const [activeTab, setActiveTab] = useState('landing');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Show Discord gate when logged in but no Discord username set
+  const needsDiscord = isAuthenticated && !user.discordUsername;
 
   // Automatically redirect user into platform as soon as authentication state becomes true
   useEffect(() => {
@@ -110,6 +114,10 @@ export default function App() {
         onClose={handleCloseAuth} 
         onSuccess={handleAuthSuccess} 
       />
+
+      {/* Discord Gate — blocks ALL users who haven't submitted their Discord username.
+          Rendered LAST so it sits on top of everything. No close button. */}
+      {needsDiscord && <DiscordGateModal />}
 
     </div>
   );

@@ -117,6 +117,7 @@ export function AppProvider({ children }) {
       redditUsername: '',
       redditAccounts: [],
       isRedditApproved: false,
+      discordUsername: '',
     }
   });
 
@@ -164,9 +165,30 @@ export function AppProvider({ children }) {
     safeJsonParse('th_task_history', [])
   );
 
-  const [activeClaim, setActiveClaim] = useState(() => 
+  const [activeClaim, setActiveClaim] = useState(() =>
     safeJsonParse('th_active_claim', null)
   );
+
+  // 4-Hour cooldown map per Reddit account: { [redditUsername]: timestampMs }
+  const [accountCooldowns, setAccountCooldowns] = useState(() =>
+    safeJsonParse('th_account_cooldowns', {})
+  );
+
+  useEffect(() => {
+    localStorage.setItem('th_account_cooldowns', JSON.stringify(accountCooldowns));
+  }, [accountCooldowns]);
+
+  // Active Reddit Account (for multi-account switching)
+  const activeRedditAccount = authState.user.activeRedditAccount || 
+    localStorage.getItem('th_active_reddit_account') || 
+    authState.user.redditUsername || 
+    (authState.user.redditAccounts && authState.user.redditAccounts[0]
+      ? (typeof authState.user.redditAccounts[0] === 'string' ? authState.user.redditAccounts[0] : authState.user.redditAccounts[0].username)
+      : '');
+
+  // Cooldown until timestamp for the currently active Reddit account
+  const claimCooldownUntil = activeRedditAccount ? (accountCooldowns[activeRedditAccount] || 0) : 0;
+
 
   const [payouts, setPayouts] = useState(() => 
     safeJsonParse('th_payouts', [])
@@ -250,7 +272,8 @@ export function AppProvider({ children }) {
                   cryptoAddress: data.user.cryptoAddress || '',
                   redditUsername: data.user.redditUsername || '',
                   redditAccounts: data.user.redditAccounts || [],
-                  isRedditApproved: data.user.isRedditApproved || false
+                  isRedditApproved: data.user.isRedditApproved || false,
+                  discordUsername: data.user.discordUsername || ''
                 }
               });
             }
@@ -274,7 +297,8 @@ export function AppProvider({ children }) {
             cryptoAddress: '',
             redditUsername: '',
             redditAccounts: [],
-            isRedditApproved: false
+            isRedditApproved: false,
+            discordUsername: ''
           }
         });
       }
@@ -298,6 +322,10 @@ export function AppProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('th_active_claim', JSON.stringify(activeClaim));
   }, [activeClaim]);
+
+  useEffect(() => {
+    localStorage.setItem('th_claim_cooldown', String(claimCooldownUntil));
+  }, [claimCooldownUntil]);
 
   useEffect(() => {
     localStorage.setItem('th_payouts', JSON.stringify(payouts));
@@ -363,14 +391,35 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, [activeClaim, showToast]);
 
+  // Switch active Reddit account for claiming tasks
+  const switchActiveRedditAccount = (username) => {
+    if (!username) return;
+    const cleanUsername = username.trim().startsWith('u/') ? username.trim() : `u/${username.trim()}`;
+    localStorage.setItem('th_active_reddit_account', cleanUsername);
+    setAuthState(prev => ({
+      ...prev,
+      user: {
+        ...prev.user,
+        activeRedditAccount: cleanUsername,
+        redditUsername: cleanUsername
+      }
+    }));
+    if (showToast) {
+      showToast(`Switched active Reddit account to ${cleanUsername}`, "info");
+    }
+  };
+
   // Submit & Store Reddit Username (Supports connecting any amount of Reddit IDs)
-  const submitRedditUsername = (username) => {
+  const submitRedditUsername = async (username) => {
     if (!username) return;
     const cleanUsername = username.trim().startsWith('u/') ? username.trim() : `u/${username.trim()}`;
 
     setAuthState(prev => {
       const currentAccounts = prev.user.redditAccounts || [];
-      const exists = currentAccounts.some(acc => acc.username.toLowerCase() === cleanUsername.toLowerCase());
+      const exists = currentAccounts.some(acc => {
+        const handle = typeof acc === 'string' ? acc : acc.username;
+        return handle.toLowerCase() === cleanUsername.toLowerCase();
+      });
       
       const newAccounts = exists 
         ? currentAccounts 
@@ -380,17 +429,23 @@ export function AppProvider({ children }) {
         ...prev,
         user: {
           ...prev.user,
-          redditUsername: cleanUsername, // for backwards compatibility
+          redditUsername: cleanUsername,
+          activeRedditAccount: cleanUsername,
           redditAccounts: newAccounts,
-          isRedditApproved: exists ? prev.user.isRedditApproved : false, // needs approval if new
+          isRedditApproved: exists ? prev.user.isRedditApproved : false,
         }
       };
     });
 
+    localStorage.setItem('th_active_reddit_account', cleanUsername);
+
     setMicrotaskers(prev => prev.map(m => {
       if (m.email.toLowerCase() === authState.user.email.toLowerCase() || m.id === authState.user.id) {
         const currentAccounts = m.redditAccounts || [];
-        const exists = currentAccounts.some(acc => acc.username.toLowerCase() === cleanUsername.toLowerCase());
+        const exists = currentAccounts.some(acc => {
+          const handle = typeof acc === 'string' ? acc : acc.username;
+          return handle.toLowerCase() === cleanUsername.toLowerCase();
+        });
         const newAccounts = exists 
           ? currentAccounts 
           : [...currentAccounts, { username: cleanUsername, isApproved: false }];
@@ -406,8 +461,19 @@ export function AppProvider({ children }) {
       return m;
     }));
 
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (token) {
+        await fetch(`${API_BASE_URL}/user/submit-reddit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ redditUsername: cleanUsername })
+        }).catch(() => null);
+      }
+    } catch (e) {}
+
     if (showToast) {
-      showToast(`Reddit ID ${cleanUsername} submitted! Pending Admin/Mod approval.`, "info");
+      showToast(`Reddit ID ${cleanUsername} added!`, "success");
     }
   };
 
@@ -417,16 +483,22 @@ export function AppProvider({ children }) {
 
     setAuthState(prev => {
       const currentAccounts = prev.user.redditAccounts || [];
-      const newAccounts = currentAccounts.filter(acc => acc.username.toLowerCase() !== cleanUsername.toLowerCase());
-      const nextActive = newAccounts.length > 0 ? newAccounts[newAccounts.length - 1].username : '';
+      const newAccounts = currentAccounts.filter(acc => {
+        const handle = typeof acc === 'string' ? acc : acc.username;
+        return handle.toLowerCase() !== cleanUsername.toLowerCase();
+      });
+      const nextActive = newAccounts.length > 0 ? (typeof newAccounts[newAccounts.length - 1] === 'string' ? newAccounts[newAccounts.length - 1] : newAccounts[newAccounts.length - 1].username) : '';
       
+      localStorage.setItem('th_active_reddit_account', nextActive);
+
       return {
         ...prev,
         user: {
           ...prev.user,
           redditUsername: nextActive,
+          activeRedditAccount: nextActive,
           redditAccounts: newAccounts,
-          isRedditApproved: newAccounts.some(acc => acc.isApproved),
+          isRedditApproved: newAccounts.some(acc => (typeof acc === 'string' ? true : acc.isApproved)),
         }
       };
     });
@@ -434,14 +506,17 @@ export function AppProvider({ children }) {
     setMicrotaskers(prev => prev.map(m => {
       if (m.email.toLowerCase() === authState.user.email.toLowerCase() || m.id === authState.user.id) {
         const currentAccounts = m.redditAccounts || [];
-        const newAccounts = currentAccounts.filter(acc => acc.username.toLowerCase() !== cleanUsername.toLowerCase());
-        const nextActive = newAccounts.length > 0 ? newAccounts[newAccounts.length - 1].username : '';
+        const newAccounts = currentAccounts.filter(acc => {
+          const handle = typeof acc === 'string' ? acc : acc.username;
+          return handle.toLowerCase() !== cleanUsername.toLowerCase();
+        });
+        const nextActive = newAccounts.length > 0 ? (typeof newAccounts[newAccounts.length - 1] === 'string' ? newAccounts[newAccounts.length - 1] : newAccounts[newAccounts.length - 1].username) : '';
         return {
           ...m,
           redditUsername: nextActive,
           redditAccounts: newAccounts,
-          isRedditApproved: newAccounts.some(acc => acc.isApproved),
-          status: newAccounts.some(acc => acc.isApproved) ? 'APPROVED' : 'PENDING_APPROVAL'
+          isRedditApproved: newAccounts.some(acc => (typeof acc === 'string' ? true : acc.isApproved)),
+          status: newAccounts.some(acc => (typeof acc === 'string' ? true : acc.isApproved)) ? 'APPROVED' : 'PENDING_APPROVAL'
         };
       }
       return m;
@@ -589,28 +664,65 @@ export function AppProvider({ children }) {
       localStorage.setItem('th_jwt_token', idToken);
       
       // Perform database synchronization via backend
-      const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
-          name: userCredential.user.displayName || email.split('@')[0]
-        })
-      }).catch(() => null);
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            name: userCredential.user.displayName || email.split('@')[0]
+          })
+        });
 
-      if (res && res.ok) {
-        setIsBackendOnline(true);
+        if (res.ok) {
+          setIsBackendOnline(true);
+          const data = await res.json();
+          const activeToken = data.token || idToken;
+          localStorage.setItem('th_jwt_token', activeToken);
+          if (data.user) {
+            setAuthState({
+              isAuthenticated: true,
+              token: activeToken,
+              user: {
+                id: data.user.id,
+                name: data.user.name,
+                email: data.user.email,
+                role: data.user.role || 'USER',
+                balance: data.user.balance || 0.00,
+                upiId: data.user.upiId || '',
+                cryptoAddress: data.user.cryptoAddress || '',
+                redditUsername: data.user.redditUsername || '',
+                redditAccounts: data.user.redditAccounts || [],
+                isRedditApproved: data.user.isRedditApproved || false,
+                discordUsername: data.user.discordUsername || ''
+              }
+            });
+          }
+          if (showToast) showToast(`Welcome back, ${data.user?.name || email.split('@')[0]}!`, "success");
+        } else {
+          // Backend sync failed — still log in via Firebase auth state listener
+          setIsBackendOnline(false);
+          if (showToast) showToast("Logged in, but server sync failed. Some features may be limited.", "warning");
+        }
+      } catch (syncErr) {
+        // Network error during sync — Firebase auth still succeeded
+        setIsBackendOnline(false);
+        if (showToast) showToast("Logged in offline. Server unreachable — some features may be limited.", "warning");
       }
       
       return true;
     } catch (err) {
       let friendlyMessage = "Authentication failed. Please verify your credentials.";
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        friendlyMessage = "Invalid email or password.";
+        friendlyMessage = "Invalid email or password. Please check and try again.";
       } else if (err.code === 'auth/invalid-email') {
         friendlyMessage = "Please enter a valid email address.";
+      } else if (err.code === 'auth/too-many-requests') {
+        friendlyMessage = "Too many failed attempts. Please wait a few minutes and try again.";
+      } else if (err.code === 'auth/network-request-failed') {
+        friendlyMessage = "Network error. Please check your internet connection.";
       }
       if (showToast) showToast(friendlyMessage, "error");
       return false;
@@ -651,7 +763,8 @@ export function AppProvider({ children }) {
               cryptoAddress: data.user.cryptoAddress || '',
               redditUsername: data.user.redditUsername || '',
               redditAccounts: data.user.redditAccounts || [],
-              isRedditApproved: data.user.isRedditApproved || false
+              isRedditApproved: data.user.isRedditApproved || false,
+              discordUsername: data.user.discordUsername || ''
             }
           });
         }
@@ -672,39 +785,68 @@ export function AppProvider({ children }) {
   };
 
   const registerUser = async (name, email, password, rememberMe = true) => {
-    if (!isBackendOnline) {
-      if (showToast) showToast("Server is offline. Please try again later.", "error");
-      return false;
-    }
-
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
       const idToken = await userCredential.user.getIdToken();
       localStorage.setItem('th_jwt_token', idToken);
 
-      const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({ name })
-      });
+      // Sync user to backend DB — tolerate offline gracefully
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/firebase-sync`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({ name })
+        });
 
-      if (!res.ok) {
-        const data = await res.json();
-        if (showToast) showToast(data.error || "Profile registration sync failed.", "error");
-        return false;
+        if (res.ok) {
+          const data = await res.json();
+          const activeToken = data.token || idToken;
+          localStorage.setItem('th_jwt_token', activeToken);
+          if (data.user) {
+            setAuthState({
+              isAuthenticated: true,
+              token: activeToken,
+              user: {
+                id: data.user.id,
+                name: data.user.name,
+                email: data.user.email,
+                role: data.user.role || 'USER',
+                balance: data.user.balance || 0.00,
+                upiId: data.user.upiId || '',
+                cryptoAddress: data.user.cryptoAddress || '',
+                redditUsername: data.user.redditUsername || '',
+                redditAccounts: data.user.redditAccounts || [],
+                isRedditApproved: data.user.isRedditApproved || false,
+                discordUsername: data.user.discordUsername || ''
+              }
+            });
+          }
+          if (showToast) showToast(`Welcome to Task Hunters, ${name}! 🎉`, "success");
+        } else {
+          // Backend offline or sync error — Firebase account was created, warn user
+          const errData = await res.json().catch(() => ({}));
+          if (showToast) showToast(errData.error || "Account created, but server sync failed. Please try logging in again.", "warning");
+        }
+      } catch (syncErr) {
+        // Network error — account was created in Firebase, will sync on next login
+        if (showToast) showToast("Account created! Server is temporarily unreachable — please log in again shortly.", "warning");
       }
 
       return true;
     } catch (err) {
-      let friendlyMessage = "Registration failed.";
+      let friendlyMessage = "Registration failed. Please try again.";
       if (err.code === 'auth/email-already-in-use') {
-        friendlyMessage = "An account already exists with this email address.";
+        friendlyMessage = "An account already exists with this email address. Please sign in instead.";
       } else if (err.code === 'auth/weak-password') {
-        friendlyMessage = "Password is too weak. Must be at least 6 characters.";
+        friendlyMessage = "Password is too weak. Please use at least 6 characters.";
+      } else if (err.code === 'auth/invalid-email') {
+        friendlyMessage = "Please enter a valid email address.";
+      } else if (err.code === 'auth/network-request-failed') {
+        friendlyMessage = "Network error. Please check your internet connection and try again.";
       }
       if (showToast) showToast(friendlyMessage, "error");
       return false;
@@ -767,6 +909,15 @@ export function AppProvider({ children }) {
       return false;
     }
 
+    // 4-hour cooldown check
+    if (claimCooldownUntil && Date.now() < claimCooldownUntil) {
+      const remaining = claimCooldownUntil - Date.now();
+      const hrs = Math.floor(remaining / 3600000);
+      const mins = Math.floor((remaining % 3600000) / 60000);
+      if (showToast) showToast(`Cooldown active! Next claim available in ${hrs}h ${mins}m.`, "warning");
+      return false;
+    }
+
     if (activeClaim) {
       if (showToast) showToast("You already have an active claimed task in workspace. Complete or cancel it first.", "warning");
       return false;
@@ -816,9 +967,13 @@ export function AppProvider({ children }) {
     }));
 
     setActiveClaim(null);
+    // Start 4-hour cooldown for active Reddit account
+    const activeAccount = authState.user.activeRedditAccount || authState.user.redditUsername || 'default';
+    const cooldownUntil = Date.now() + 4 * 60 * 60 * 1000;
+    setAccountCooldowns(prev => ({ ...prev, [activeAccount]: cooldownUntil }));
 
     if (showToast) {
-      showToast("Task claim released back to marketplace.", "info");
+      showToast(`Task released. 4-hour cooldown active for ${activeAccount}.`, "info");
     }
   };
 
@@ -854,13 +1009,18 @@ export function AppProvider({ children }) {
 
     setSheetLogs(prev => [newLogEntry, ...prev]);
     setActiveClaim(null);
+    
+    // Start 4-hour cooldown for active Reddit account
+    const activeAccount = authState.user.activeRedditAccount || authState.user.redditUsername || 'default';
+    const cooldownUntil = Date.now() + 4 * 60 * 60 * 1000;
+    setAccountCooldowns(prev => ({ ...prev, [activeAccount]: cooldownUntil }));
 
     try {
       confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
     } catch (e) {}
 
     if (showToast) {
-      showToast("Proof submitted! Logged to Google Sheets API v4. Pending Moderator verification.", "success");
+      showToast(`Proof submitted! Next task available in 4 hours for ${activeAccount}.`, "success");
     }
 
     return true;
@@ -1086,6 +1246,66 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Submit Discord Username (required gate — no bypass)
+  const submitDiscordUsername = async (username) => {
+    const clean = username.trim().replace(/^@/, '');
+    if (!clean) return;
+
+    // Optimistically update UI immediately
+    setAuthState(prev => ({
+      ...prev,
+      user: { ...prev.user, discordUsername: clean }
+    }));
+
+    // Update in microtaskers list too
+    setMicrotaskers(prev => prev.map(m => {
+      if (m.email === authState.user.email || m.id === authState.user.id) {
+        return { ...m, discordUsername: clean };
+      }
+      return m;
+    }));
+
+    // Persist to backend
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (token) {
+        await fetch(`${API_BASE_URL}/user/submit-discord`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ discordUsername: clean })
+        }).catch(() => null);
+      }
+    } catch (e) {}
+
+    if (showToast) showToast(`Discord @${clean} linked successfully!`, 'success');
+  };
+
+  // Admin/Mod: Reset a specific user's claim cooldown
+  const resetClaimCooldown = async (userId, redditHandle) => {
+    try {
+      const token = localStorage.getItem('th_jwt_token');
+      if (token) {
+        await fetch(`${API_BASE_URL}/admin/users/reset-cooldown`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ userId })
+        }).catch(() => null);
+      }
+    } catch (e) {}
+
+    if (redditHandle) {
+      setAccountCooldowns(prev => {
+        const copy = { ...prev };
+        delete copy[redditHandle];
+        return copy;
+      });
+    } else {
+      setAccountCooldowns({});
+    }
+
+    if (showToast) showToast(`Claim cooldown reset successfully!`, "success");
+  };
+
   const formatAmount = (usdVal) => {
     if (currency === 'INR') {
       return `₹${(usdVal * usdToInr).toFixed(2)}`;
@@ -1107,6 +1327,8 @@ export function AppProvider({ children }) {
         revokeMicrotasker,
         submitRedditUsername,
         deleteRedditUsername,
+        switchActiveRedditAccount,
+        accountCooldowns,
         tasks,
         taskHistory,
         activeClaim,
@@ -1131,6 +1353,8 @@ export function AppProvider({ children }) {
         registerUser,
         logoutUser,
         deleteAccount,
+        claimCooldownUntil,
+        resetClaimCooldown,
         claimTask,
         cancelClaim,
         submitProof,
@@ -1143,6 +1367,7 @@ export function AppProvider({ children }) {
         markPayoutPaid,
         rejectPayout,
         updateProfileDetails,
+        submitDiscordUsername,
         formatAmount,
       }}
     >

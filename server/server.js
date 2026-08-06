@@ -436,12 +436,16 @@ async function authenticateToken(req, res, next) {
         role = 'MODERATOR';
       }
 
+      // Detect auth provider from Firebase token metadata if available
+      const signInProvider = firebaseUser.firebase?.sign_in_provider || firebaseUser.sign_in_provider || '';
+      const authProvider = signInProvider === 'google.com' ? 'GOOGLE' : 'EMAIL';
+
       dbUser = await prisma.user.create({
         data: {
           email: emailLower,
           name: firebaseUser.name || firebaseUser.email.split('@')[0],
           role: role,
-          authProvider: 'GOOGLE',
+          authProvider: authProvider,
           passwordHash: '', // Social/Firebase auth users do not need standard passwordHash
           balance: 0.00
         }
@@ -660,10 +664,7 @@ app.post('/api/auth/firebase-sync', authenticateToken, async (req, res) => {
     // If client supplied a custom name and DB profile still has fallback username, update it
     const { name } = req.body;
     if (name && name.trim() && user.name === user.email.split('@')[0]) {
-      user = await prisma.prismaUser?.update ? await prisma.prismaUser.update({
-        where: { id: user.id },
-        data: { name: name.trim() }
-      }) : await prisma.user.update({
+      user = await prisma.user.update({
         where: { id: user.id },
         data: { name: name.trim() }
       });
@@ -683,7 +684,8 @@ app.post('/api/auth/firebase-sync', authenticateToken, async (req, res) => {
         cryptoAddress: user.cryptoAddress || '',
         redditUsername: user.redditUsername || '',
         redditAccounts: user.redditAccounts || [],
-        isRedditApproved: user.isRedditApproved || false
+        isRedditApproved: user.isRedditApproved || false,
+        discordUsername: user.discordUsername || ''
       }
     });
   } catch (err) {
@@ -767,7 +769,7 @@ app.post('/api/auth/login', authRouteLimiter, validateBody(loginSchema), async (
     resetAuthFailures(lowerEmail);
 
     const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, balance: user.balance, upiId: user.upiId, cryptoAddress: user.cryptoAddress } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, balance: user.balance, upiId: user.upiId || '', cryptoAddress: user.cryptoAddress || '', discordUsername: user.discordUsername || '' } });
   } catch (err) {
     return sendSafeError(res, err, 500, 'Authentication failed.');
   }
@@ -890,6 +892,7 @@ app.get('/api/admin/users', authenticateToken, requireRole('ADMIN', 'MODERATOR')
         redditUsername: true,
         isRedditApproved: true,
         redditAccounts: true,
+        discordUsername: true,
         createdAt: true,
       }
     });
@@ -991,6 +994,28 @@ app.delete('/api/admin/users/:id', authenticateToken, requireRole('ADMIN'), auth
   }
 });
 
+// Admin/Mod Endpoint: Reset a user's 4-hour claim cooldown
+app.post('/api/admin/users/reset-cooldown', authenticateToken, requireRole('ADMIN', 'MODERATOR'), authedActionRateLimiter, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { claimCooldownUntil: null }
+    });
+
+    res.json({ success: true, message: `Claim cooldown reset for ${user.email}.` });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Failed to reset cooldown.');
+  }
+});
+
+
+
 // User Endpoint: Submit Reddit Username for approval
 app.post('/api/user/submit-reddit', authenticateToken, authedActionRateLimiter, async (req, res) => {
   try {
@@ -1025,6 +1050,33 @@ app.post('/api/user/submit-reddit', authenticateToken, authedActionRateLimiter, 
     return sendSafeError(res, err, 500, 'Failed to submit Reddit username.');
   }
 });
+
+// User Endpoint: Submit Discord Username (required gate)
+app.post('/api/user/submit-discord', authenticateToken, authedActionRateLimiter, async (req, res) => {
+  try {
+    const { discordUsername } = req.body;
+    if (!discordUsername) return res.status(400).json({ error: 'discordUsername is required.' });
+
+    const clean = discordUsername.trim().replace(/^@/, '');
+    if (clean.length < 2 || clean.length > 32) {
+      return res.status(400).json({ error: 'Discord username must be 2–32 characters.' });
+    }
+    if (!/^[a-zA-Z0-9_.]+$/.test(clean)) {
+      return res.status(400).json({ error: 'Invalid Discord username format.' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.userId },
+      data: { discordUsername: clean }
+    });
+
+    res.json({ success: true, discordUsername: updatedUser.discordUsername });
+  } catch (err) {
+    return sendSafeError(res, err, 500, 'Failed to submit Discord username.');
+  }
+});
+
+
 
 // --- TASKS API ROUTES ---
 

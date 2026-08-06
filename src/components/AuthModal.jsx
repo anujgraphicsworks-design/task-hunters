@@ -13,12 +13,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
   const [name, setName] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    if (isLoading) return;
 
     if (!email) {
       setErrorMessage("Please enter your email address.");
@@ -30,22 +32,28 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
       return;
     }
 
-    if (mode === 'LOGIN') {
-      const success = await loginUser(email, password, rememberMe);
-      if (success) {
-        if (onSuccess) onSuccess();
-        if (onClose) onClose();
+    setIsLoading(true);
+    try {
+      if (mode === 'LOGIN') {
+        const success = await loginUser(email, password, rememberMe);
+        if (success) {
+          if (onSuccess) onSuccess();
+          if (onClose) onClose();
+        }
+      } else {
+        if (!name) {
+          setErrorMessage("Please enter your full name.");
+          setIsLoading(false);
+          return;
+        }
+        const success = await registerUser(name, email, password, rememberMe);
+        if (success) {
+          if (onSuccess) onSuccess();
+          if (onClose) onClose();
+        }
       }
-    } else {
-      if (!name) {
-        setErrorMessage("Please enter your full name.");
-        return;
-      }
-      const success = await registerUser(name, email, password, rememberMe);
-      if (success) {
-        if (onSuccess) onSuccess();
-        if (onClose) onClose();
-      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -163,10 +171,23 @@ export default function AuthModal({ isOpen, onClose, onSuccess, defaultMode = 'L
           {/* Submit Button */}
           <button
             type="submit"
-            className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
+            disabled={isLoading}
+            className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
           >
-            {mode === 'LOGIN' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-            {mode === 'LOGIN' ? 'Sign In & Enter Marketplace' : 'Create Hunter Account'}
+            {isLoading ? (
+              <>
+                <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                </svg>
+                {mode === 'LOGIN' ? 'Signing In...' : 'Creating Account...'}
+              </>
+            ) : (
+              <>
+                {mode === 'LOGIN' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                {mode === 'LOGIN' ? 'Sign In & Enter Marketplace' : 'Create Hunter Account'}
+              </>
+            )}
           </button>
 
         </form>

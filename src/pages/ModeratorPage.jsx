@@ -1,244 +1,160 @@
 import React, { useState } from 'react';
 import { useApp, autoDetectSubreddit } from '../context/AppContext';
-import GoogleSheetsPreviewModal from '../components/GoogleSheetsPreviewModal';
 import BackendControlCenter from './BackendControlCenter';
-import { 
-  UserCheck, 
-  PlusCircle, 
-  FileSpreadsheet, 
-  CheckCircle2, 
-  XCircle, 
-  ExternalLink, 
-  Copy, 
-  Check, 
-  Wand2, 
+import {
+  UserCheck,
+  PlusCircle,
+  CheckCircle2,
+  XCircle,
+  ExternalLink,
   Clock,
   ShieldCheck,
-  Server,
-  Activity,
-  Database,
   History,
-  Trash2
+  Trash2,
+  Timer,
 } from 'lucide-react';
 
 export default function ModeratorPage() {
-  const { 
-    user, 
-    tasks, 
+  const {
+    user,
+    tasks,
     taskHistory,
-    approveSubmission, 
-    rejectSubmission, 
-    createTask, 
+    approveSubmission,
+    rejectSubmission,
+    createTask,
     globalRates,
-    sheetLogs
+    microtaskers,
+    approveMicrotasker,
+    revokeMicrotasker,
+    resetClaimCooldown,
+    deleteUserFromBackend,
+    formatAmount,
+    theme,
   } = useApp();
 
-  const [activeModSubtab, setActiveModSubtab] = useState('QUEUE'); // 'QUEUE' | 'HISTORY' | 'CREATE_TASK' | 'BACKEND'
-  const [copiedId, setCopiedId] = useState(null);
-  const [showSheetsModal, setShowSheetsModal] = useState(false);
+  const isDark = theme === 'dark';
+  const card = isDark ? 'bg-[#121826] border-[#202B3F]' : 'bg-white border-slate-200 shadow-sm';
+  const sub = isDark ? 'bg-[#090D16] border-[#202B3F]' : 'bg-slate-50 border-slate-200';
+  const inp = isDark ? 'bg-[#090D16] border-[#202B3F] text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400';
+  const tt = isDark ? 'text-white' : 'text-slate-900';
+  const tm = isDark ? 'text-slate-400' : 'text-slate-500';
+  const divider = isDark ? 'divide-[#202B3F]/60' : 'divide-slate-100';
+
+  const [activeTab, setActiveTab] = useState('QUEUE'); // QUEUE | USERS | HISTORY | ADMIN
   const [rejectReasonMap, setRejectReasonMap] = useState({});
 
-  // Task Creation Form
-  const [taskType, setTaskType] = useState('REDDIT_COMMENT');
-  const [subredditInput, setSubredditInput] = useState('');
-  const [targetPostUrlInput, setTargetPostUrlInput] = useState('');
-  const [teaserTextInput, setTeaserTextInput] = useState('');
-  const [contentToPostInput, setContentToPostInput] = useState('');
-  const [driveLinkInput, setDriveLinkInput] = useState('');
-  const [rewardInput, setRewardInput] = useState(globalRates.commentRate);
-  const [timeLimitMinsInput, setTimeLimitMinsInput] = useState(globalRates.defaultTimerMins);
-  const [guidelinesInput, setGuidelinesInput] = useState('Account age > 30 days. Comment must stay live.');
-
   const pendingTasks = tasks.filter(t => t.status === 'PENDING_APPROVAL');
-
-  const handleUrlChange = (url) => {
-    setTargetPostUrlInput(url);
-    const detected = autoDetectSubreddit(url);
-    if (detected) {
-      setSubredditInput(detected);
-    }
-  };
-
-  const handleCreateTask = (e) => {
-    e.preventDefault();
-    if (!targetPostUrlInput || !contentToPostInput) {
-      alert("Please complete required task fields.");
-      return;
-    }
-
-    const sub = subredditInput || autoDetectSubreddit(targetPostUrlInput) || 'r/reddit';
-
-    createTask({
-      type: taskType,
-      subreddit: sub,
-      targetPostUrl: targetPostUrlInput,
-      teaserText: teaserTextInput || `Reddit task in ${sub}`,
-      contentToPost: contentToPostInput,
-      driveLink: driveLinkInput,
-      reward: rewardInput,
-      timeLimitMins: timeLimitMinsInput,
-      guidelines: guidelinesInput,
-    });
-
-    setTargetPostUrlInput('');
-    setContentToPostInput('');
-    setTeaserTextInput('');
-    setDriveLinkInput('');
-    setSubredditInput('');
-  };
-
-  const copyToClipboard = (text, id) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
+  const pendingReddit = microtaskers.filter(m => m.redditUsername && !(m.isRedditApproved || m.isApprovedHunter));
 
   const formatDaysLeft = (expiresMs) => {
     if (!expiresMs) return '7 Days';
     const leftMs = Math.max(0, expiresMs - Date.now());
     const days = Math.floor(leftMs / (24 * 3600 * 1000));
     const hours = Math.floor((leftMs % (24 * 3600 * 1000)) / (3600 * 1000));
-    return `${days}d ${hours}h left until auto-delete`;
+    return `${days}d ${hours}h left`;
   };
 
+  const tabs = [
+    { id: 'QUEUE', label: `Proof Queue (${pendingTasks.length})`, icon: <UserCheck className="w-3.5 h-3.5" /> },
+    { id: 'USERS', label: `Users (${pendingReddit.length} pending)`, icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+    { id: 'HISTORY', label: 'History', icon: <History className="w-3.5 h-3.5" /> },
+    { id: 'ADMIN', label: 'Admin Panel', icon: <PlusCircle className="w-3.5 h-3.5" /> },
+  ];
+
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-16">
-      
-      {/* Header Bar with Subtab Navigation */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-6 rounded-2xl bg-dark-card border border-purple-500/30">
+    <div className="space-y-5 pb-12">
+
+      {/* Header */}
+      <div className={`flex items-center justify-between p-4 rounded-xl border ${card}`}>
         <div>
-          <div className="flex items-center gap-2">
-            <UserCheck className="w-5 h-5 text-purple-400" />
-            <h2 className="text-xl font-extrabold text-white">Moderator Control Suite</h2>
-          </div>
-          <p className="text-xs text-dark-muted">
-            Review Reddit submission proofs, view 7-day task history, create tasks, and inspect backend server.
-          </p>
+          <h1 className={`text-base font-extrabold ${tt}`}>Moderator Dashboard</h1>
+          <p className={`text-xs ${tm}`}>{user.name} · MODERATOR</p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Subtab Navigation Buttons */}
-          <div className="flex items-center bg-dark-bg p-1 rounded-xl border border-dark-border text-xs font-semibold">
-            <button
-              onClick={() => setActiveModSubtab('QUEUE')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeModSubtab === 'QUEUE' ? 'bg-purple-600 text-white font-bold' : 'text-dark-muted hover:text-white'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Proof Queue ({pendingTasks.length})
-            </button>
-
-            <button
-              onClick={() => setActiveModSubtab('HISTORY')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeModSubtab === 'HISTORY' ? 'bg-purple-600 text-white font-bold' : 'text-dark-muted hover:text-white'
-              }`}
-            >
-              <History className="w-3.5 h-3.5 text-amber-400" />
-              7-Day Task History ({taskHistory.length})
-            </button>
-
-            <button
-              onClick={() => setActiveModSubtab('CREATE_TASK')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeModSubtab === 'CREATE_TASK' ? 'bg-purple-600 text-white font-bold' : 'text-dark-muted hover:text-white'
-              }`}
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              Create Task
-            </button>
-
-            <button
-              onClick={() => setActiveModSubtab('BACKEND')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeModSubtab === 'BACKEND' ? 'bg-brand-500 text-white font-bold shadow-glow-orange-sm' : 'text-brand-400 hover:text-brand-300'
-              }`}
-            >
-              <Server className="w-3.5 h-3.5" />
-              Backend Engine
-            </button>
-          </div>
-
-          <button
-            onClick={() => setShowSheetsModal(true)}
-            className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-500/30 transition-all"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            Sheets Data
-          </button>
+        <div className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 ${isDark ? 'bg-violet-500/10 text-violet-400 border-violet-500/30' : 'bg-violet-50 text-violet-600 border-violet-200'}`}>
+          <ShieldCheck className="w-3.5 h-3.5" /> Moderator
         </div>
       </div>
 
-      {/* SUBTAB 1: PROOF REVIEW QUEUE */}
-      {activeModSubtab === 'QUEUE' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-extrabold text-white">
-              Pending Proof Review Queue ({pendingTasks.length})
-            </h3>
+      {/* Tab Bar */}
+      <div className={`flex items-center gap-1 p-1 rounded-xl border ${sub} overflow-x-auto`}>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              activeTab === t.id
+                ? isDark ? 'bg-[#121826] text-white shadow-sm' : 'bg-white text-slate-900 shadow-sm'
+                : `${tm} hover:text-violet-400`
+            }`}
+          >
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ===== PROOF QUEUE ===== */}
+      {activeTab === 'QUEUE' && (
+        <div className="space-y-4">
+          <div className={`p-4 rounded-xl border ${card}`}>
+            <h2 className={`text-sm font-extrabold ${tt}`}>Pending Proof Review ({pendingTasks.length})</h2>
+            <p className={`text-xs mt-0.5 ${tm}`}>Review user-submitted Reddit proof URLs and approve or reject them.</p>
           </div>
 
           {pendingTasks.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-dark-card border border-dark-border space-y-3">
-              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-              <h4 className="text-base font-bold text-white">Proof Queue Empty</h4>
-              <p className="text-xs text-dark-muted">No pending user submissions waiting for moderator review.</p>
+            <div className={`p-12 rounded-xl border text-center ${card}`}>
+              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+              <p className={`text-sm font-bold ${tt}`}>Queue Clear</p>
+              <p className={`text-xs ${tm}`}>No pending proof submissions.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-3">
               {pendingTasks.map(t => (
-                <div key={t.id} className="p-6 rounded-2xl bg-dark-card border border-dark-border space-y-4 shadow-lg">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-dark-border pb-3">
+                <div key={t.id} className={`p-4 rounded-xl border space-y-3 ${card}`}>
+                  <div className="flex items-start justify-between gap-2">
                     <div>
-                      <span className="px-2.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-bold uppercase tracking-wider">
-                        {t.subreddit} • {t.type}
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${isDark ? 'bg-violet-500/10 text-violet-400 border-violet-500/30' : 'bg-violet-50 text-violet-600 border-violet-200'}`}>
+                        {t.subreddit} · {t.type}
                       </span>
-                      <h4 className="text-sm font-extrabold text-white mt-1">{t.teaserText}</h4>
+                      <p className={`text-sm font-bold mt-1 ${tt}`}>{t.teaserText}</p>
                     </div>
-                    <div className="text-left sm:text-right">
-                      <span className="text-xs text-dark-muted block">Reward</span>
-                      <span className="text-lg font-extrabold text-emerald-400">${t.reward.toFixed(2)}</span>
-                    </div>
+                    <span className="text-emerald-400 font-extrabold text-sm font-mono shrink-0">{formatAmount(t.reward)}</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="p-3 rounded-xl bg-dark-bg border border-dark-border space-y-1">
-                      <span className="text-dark-muted font-bold block uppercase text-[10px]">Submitted Proof URL</span>
-                      <a href={t.proofUrl} target="_blank" rel="noreferrer" className="text-brand-400 font-mono font-bold truncate block hover:underline flex items-center gap-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className={`p-2.5 rounded-lg border text-xs ${sub}`}>
+                      <span className={`text-[10px] font-bold uppercase block mb-1 ${tm}`}>Submitted Proof</span>
+                      <a href={t.proofUrl} target="_blank" rel="noreferrer" className="text-orange-400 font-mono break-all hover:underline flex items-center gap-1">
                         {t.proofUrl} <ExternalLink className="w-3 h-3 shrink-0" />
                       </a>
                     </div>
-
-                    <div className="p-3 rounded-xl bg-dark-bg border border-dark-border space-y-1">
-                      <span className="text-dark-muted font-bold block uppercase text-[10px]">Target Reddit Post</span>
-                      <a href={t.targetPostUrl} target="_blank" rel="noreferrer" className="text-cyan-400 font-mono font-bold truncate block hover:underline flex items-center gap-1">
+                    <div className={`p-2.5 rounded-lg border text-xs ${sub}`}>
+                      <span className={`text-[10px] font-bold uppercase block mb-1 ${tm}`}>Target Post</span>
+                      <a href={t.targetPostUrl} target="_blank" rel="noreferrer" className={`font-mono break-all hover:underline flex items-center gap-1 ${tm}`}>
                         {t.targetPostUrl} <ExternalLink className="w-3 h-3 shrink-0" />
                       </a>
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <input
                       type="text"
-                      placeholder="Optional reject reason (e.g. comment deleted)..."
+                      placeholder="Optional reject reason..."
                       value={rejectReasonMap[t.id] || ''}
-                      onChange={(e) => setRejectReasonMap({ ...rejectReasonMap, [t.id]: e.target.value })}
-                      className="w-full sm:w-auto flex-1 bg-dark-bg border border-dark-border rounded-xl px-3 py-2 text-xs text-white placeholder-dark-muted focus:outline-none focus:border-purple-500"
+                      onChange={e => setRejectReasonMap({ ...rejectReasonMap, [t.id]: e.target.value })}
+                      className={`flex-1 rounded-lg px-3 py-2 text-xs border ${inp}`}
                     />
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => rejectSubmission(t.id, rejectReasonMap[t.id])}
-                        className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-bold hover:bg-rose-500/25 transition-all flex items-center justify-center gap-1"
+                        className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 ${isDark ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100'}`}
                       >
-                        <XCircle className="w-4 h-4" /> Reject
+                        <XCircle className="w-3.5 h-3.5" /> Reject
                       </button>
                       <button
                         onClick={() => approveSubmission(t.id, 'Approved by Moderator')}
-                        className="flex-1 sm:flex-initial px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs shadow-glow-green transition-all flex items-center justify-center gap-1"
+                        className="flex-1 sm:flex-initial px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center gap-1"
                       >
-                        <CheckCircle2 className="w-4 h-4" /> Approve & Credit
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Approve
                       </button>
                     </div>
                   </div>
@@ -249,229 +165,114 @@ export default function ModeratorPage() {
         </div>
       )}
 
-      {/* SUBTAB 2: 7-DAY TASK HISTORY LOG (AUTO-PURGE) */}
-      {activeModSubtab === 'HISTORY' && (
-        <div className="p-8 rounded-3xl bg-dark-card border border-dark-border space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-                <History className="w-5 h-5 text-amber-400" />
-                7-Day Task History Log (Auto-Purge Daemon Active)
-              </h3>
-              <p className="text-xs text-dark-muted">
-                Approved & rejected tasks remain in audit history for 7 days before being automatically purged from memory & database.
-              </p>
-            </div>
-            <span className="px-3.5 py-1.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-extrabold flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-amber-400 animate-spin" />
-              7-Day Retention Active
-            </span>
+      {/* ===== USERS ===== */}
+      {activeTab === 'USERS' && (
+        <div className={`p-4 rounded-xl border space-y-3 ${card}`}>
+          <div>
+            <h2 className={`text-sm font-extrabold ${tt}`}>User Approvals & Management</h2>
+            <p className={`text-xs ${tm}`}>{pendingReddit.length} pending Reddit approval</p>
           </div>
 
-          <div className="rounded-2xl border border-dark-border bg-dark-bg overflow-hidden shadow-lg">
-            <table className="w-full text-left text-xs border-collapse font-mono">
-              <thead className="bg-dark-card border-b border-dark-border text-dark-muted font-bold uppercase text-[10px] tracking-wider">
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+            {microtaskers.map(m => {
+              const isApproved = m.isRedditApproved || m.isApprovedHunter;
+              return (
+                <div key={m.id} className={`p-3 rounded-xl border ${sub}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0 ${
+                      isApproved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-400'
+                    }`}>
+                      {(m.name || m.email || '?')[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs font-bold ${tt}`}>{m.name || m.email}</span>
+                        {m.redditUsername && <span className={`text-[10px] font-mono ${tm}`}>{m.redditUsername}</span>}
+                        {isApproved && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">✓ Approved</span>}
+                      </div>
+                      <p className={`text-[10px] ${tm}`}>{m.email}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                      {m.redditUsername && !isApproved && (
+                        <button onClick={() => approveMicrotasker(m.id, m.redditUsername)}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 flex items-center gap-1">
+                          Approve
+                        </button>
+                      )}
+                      {isApproved && (
+                        <button onClick={() => revokeMicrotasker(m.id)}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 flex items-center gap-1">
+                          Revoke
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { if (confirm(`Reset cooldown for ${m.email}?`)) resetClaimCooldown(m.id); }}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 flex items-center gap-1"
+                        title="Reset 4-hour claim cooldown"
+                      >
+                        <Timer className="w-3 h-3" /> Reset Timer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ===== HISTORY ===== */}
+      {activeTab === 'HISTORY' && (
+        <div className={`p-4 rounded-xl border space-y-3 ${card}`}>
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-amber-400" />
+            <h2 className={`text-sm font-extrabold ${tt}`}>7-Day Task History ({taskHistory.length})</h2>
+          </div>
+
+          <div className={`rounded-xl border overflow-hidden`}>
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className={`text-[10px] uppercase font-bold tracking-wider border-b ${isDark ? 'bg-[#090D16] border-[#202B3F] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                 <tr>
-                  <th className="py-3.5 px-4">Task ID</th>
-                  <th className="py-3.5 px-4">Subreddit & Type</th>
-                  <th className="py-3.5 px-4">Submitted Proof</th>
-                  <th className="py-3.5 px-4">Reward</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">Reviewed By</th>
-                  <th className="py-3.5 px-4 text-right">Auto-Delete Countdown</th>
+                  <th className="py-2.5 px-3">Subreddit / Type</th>
+                  <th className="py-2.5 px-3">Proof URL</th>
+                  <th className="py-2.5 px-3">Reward</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Expires</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-dark-border/60">
+              <tbody className={`divide-y ${divider}`}>
                 {taskHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-dark-muted font-mono">
-                      No completed task history records in 7-day retention log.
+                  <tr><td colSpan={5} className={`text-center py-10 ${tm}`}>No history records.</td></tr>
+                ) : taskHistory.map((item, idx) => (
+                  <tr key={item.id || idx} className={isDark ? 'hover:bg-[#182032]' : 'hover:bg-slate-50'}>
+                    <td className="py-2.5 px-3">
+                      <span className={`font-bold block ${tt}`}>{item.subreddit}</span>
+                      <span className={`text-[10px] ${tm}`}>{item.type}</span>
+                    </td>
+                    <td className="py-2.5 px-3 max-w-[200px] truncate">
+                      <a href={item.proofUrl} target="_blank" rel="noreferrer" className="text-orange-400 hover:underline font-mono">
+                        {item.proofUrl || 'N/A'}
+                      </a>
+                    </td>
+                    <td className="py-2.5 px-3 text-emerald-400 font-bold font-mono">${(item.reward || 1).toFixed(2)}</td>
+                    <td className="py-2.5 px-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        item.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                      }`}>{item.status}</span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <span className={`text-[10px] ${tm}`}>{formatDaysLeft(item.expiresFromHistoryAt)}</span>
                     </td>
                   </tr>
-                ) : (
-                  taskHistory.map((item, idx) => (
-                    <tr key={item.id || idx} className="hover:bg-dark-card/50 transition-colors">
-                      <td className="py-3.5 px-4 text-brand-300 font-bold">{item.id}</td>
-                      <td className="py-3.5 px-4">
-                        <span className="font-extrabold text-white block">{item.subreddit}</span>
-                        <span className="text-[10px] text-dark-muted">{item.type}</span>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <a href={item.proofUrl} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline font-mono truncate max-w-xs block">
-                          {item.proofUrl || 'No link'}
-                        </a>
-                      </td>
-                      <td className="py-3.5 px-4 text-emerald-400 font-bold">${(item.reward || 1).toFixed(2)}</td>
-                      <td className="py-3.5 px-4">
-                        <span className={`px-2.5 py-0.5 rounded font-extrabold text-[10px] ${
-                          item.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                        }`}>
-                          {item.status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-white font-semibold">{item.reviewedBy || 'Moderator'}</td>
-                      <td className="py-3.5 px-4 text-right text-amber-300 font-extrabold">
-                        {formatDaysLeft(item.expiresFromHistoryAt)}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
-
         </div>
       )}
 
-      {/* SUBTAB 3: TASK CREATION SUITE */}
-      {activeModSubtab === 'CREATE_TASK' && (
-        <div className="p-6 rounded-2xl bg-dark-card border border-dark-border space-y-6">
-          <div>
-            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-              <PlusCircle className="w-5 h-5 text-purple-400" />
-              Moderator Task Creation Suite
-            </h3>
-            <p className="text-xs text-dark-muted">
-              Target URLs automatically detect the subreddit name (`r/sub`).
-            </p>
-          </div>
-
-          <form onSubmit={handleCreateTask} className="space-y-4">
-            
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-dark-light">Task Type</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTaskType('REDDIT_COMMENT');
-                    setRewardInput(globalRates.commentRate);
-                  }}
-                  className={`p-3 rounded-xl border text-xs font-bold transition-all ${
-                    taskType === 'REDDIT_COMMENT'
-                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/50'
-                      : 'bg-dark-bg text-dark-muted border-dark-border'
-                  }`}
-                >
-                  Reddit Comment Task (${globalRates.commentRate.toFixed(2)})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTaskType('REDDIT_POST');
-                    setRewardInput(globalRates.postRate);
-                  }}
-                  className={`p-3 rounded-xl border text-xs font-bold transition-all ${
-                    taskType === 'REDDIT_POST'
-                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
-                      : 'bg-dark-bg text-dark-muted border-dark-border'
-                  }`}
-                >
-                  Reddit Post Task (${globalRates.postRate.toFixed(2)})
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-dark-light">Target Reddit URL</label>
-                {subredditInput && (
-                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                    <Wand2 className="w-3.5 h-3.5" /> Auto-Detected: {subredditInput}
-                  </span>
-                )}
-              </div>
-              <input
-                type="url"
-                required
-                placeholder="https://www.reddit.com/r/technology/comments/..."
-                value={targetPostUrlInput}
-                onChange={(e) => handleUrlChange(e.target.value)}
-                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white font-mono placeholder-dark-muted focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-dark-light">Subreddit (e.g. r/technology)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="r/technology"
-                  value={subredditInput}
-                  onChange={(e) => setSubredditInput(e.target.value)}
-                  className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-dark-muted focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-dark-light">Reward Amount ($ USD)</label>
-                <input
-                  type="number"
-                  step="0.25"
-                  required
-                  value={rewardInput}
-                  onChange={(e) => setRewardInput(e.target.value)}
-                  className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white font-mono placeholder-dark-muted focus:outline-none focus:border-purple-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-dark-light">Public Pre-Claim Teaser Snippet</label>
-              <input
-                type="text"
-                placeholder="Drop an insightful comment on web3 micro-tasks..."
-                value={teaserTextInput}
-                onChange={(e) => setTeaserTextInput(e.target.value)}
-                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-white placeholder-dark-muted focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-dark-light">Exact Required Copy Text</label>
-              <textarea
-                rows={3}
-                required
-                placeholder="The exact text user must copy and paste on Reddit..."
-                value={contentToPostInput}
-                onChange={(e) => setContentToPostInput(e.target.value)}
-                className="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-xs text-white font-mono placeholder-dark-muted focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-dark-light">Google Drive Link (Post Images / Assets)</label>
-              <input
-                type="url"
-                placeholder="https://drive.google.com/drive/folders/..."
-                value={driveLinkInput}
-                onChange={(e) => setDriveLinkInput(e.target.value)}
-                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-amber-300 font-mono placeholder-dark-muted focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-glow-purple transition-all"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Publish Task to Live Marketplace
-            </button>
-
-          </form>
-        </div>
-      )}
-
-      {/* SUBTAB 4: EMBEDDED BACKEND CONTROL CENTER */}
-      {activeModSubtab === 'BACKEND' && (
-        <BackendControlCenter />
-      )}
-
-      {/* Google Sheets Modal */}
-      {showSheetsModal && (
-        <GoogleSheetsPreviewModal onClose={() => setShowSheetsModal(false)} />
-      )}
+      {/* ===== ADMIN PANEL (embedded) ===== */}
+      {activeTab === 'ADMIN' && <BackendControlCenter />}
 
     </div>
   );

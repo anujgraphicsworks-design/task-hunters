@@ -18,9 +18,10 @@ export default function TaskWorkspacePage({ setActiveTab }) {
   const { 
     activeClaim, 
     tasks, 
-    abandonTask, 
+    cancelClaim, 
     submitProof, 
-    formatAmount 
+    formatAmount,
+    user 
   } = useApp();
 
   const [copied, setCopied] = useState(false);
@@ -242,6 +243,13 @@ export default function TaskWorkspacePage({ setActiveTab }) {
               Paste your live Reddit comment or post permalink (e.g. <code className="text-brand-300">https://www.reddit.com/r/.../comment/xyz</code>).
             </p>
 
+            {user?.activeRedditAccount && (
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/30 text-xs">
+                <span className="text-dark-muted text-[11px]">Submitting with Reddit ID:</span>
+                <span className="font-mono font-extrabold text-orange-400">{user.activeRedditAccount}</span>
+              </div>
+            )}
+
             <div className="space-y-2">
               <input
                 type="url"
@@ -257,8 +265,8 @@ export default function TaskWorkspacePage({ setActiveTab }) {
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm("Are you sure you want to abandon this task? It will revert back to the public pool.")) {
-                    abandonTask();
+                  if (confirm("Are you sure you want to abandon this task? It will revert back to the public pool and start a 4-hour cooldown for your active Reddit account.")) {
+                    cancelClaim(activeTask.id);
                     setActiveTab('dashboard');
                   }
                 }}

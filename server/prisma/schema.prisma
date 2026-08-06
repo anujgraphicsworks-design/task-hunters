@@ -22,6 +22,8 @@ model User {
   redditUsername   String?
   isRedditApproved Boolean         @default(false)
   redditAccounts   String?         // JSON array of linked reddit handles
+  claimCooldownUntil DateTime?     // When the 4-hour claim cooldown expires
+  discordUsername  String?         // Required Discord handle for platform access
   createdAt        DateTime        @default(now())
   taskClaims       TaskClaim[]
   payoutRequests   PayoutRequest[]
@@ -29,11 +31,13 @@ model User {
 
 model Task {
   id            String      @id @default(uuid())
-  type          String      @default("REDDIT_COMMENT") // "REDDIT_COMMENT" | "REDDIT_POST"
+  type          String      @default("REDDIT_COMMENT") // "REDDIT_COMMENT" | "REDDIT_POST_WITH_COMMENT" | "REDDIT_POST_ONLY"
   subreddit     String
   targetPostUrl String
+  postTitle     String?     // For post tasks: the title of the post
+  postBody      String?     // For post tasks: the body/text of the post
   teaserText    String?
-  contentToPost String
+  contentToPost String      // For comment tasks: the comment. For post tasks: redundant/same as body
   driveLink     String?     // Google Drive link for post task images/assets
   reward        Float       @default(1.00)
   timeLimitMins Int         @default(360) // 6 Hours
